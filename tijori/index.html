@@ -72,6 +72,9 @@ code{font-family:var(--mono);font-size:.92em;background:#ffffff14;padding:1px 5p
 .ochips{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}
 .ochip{padding:7px 14px;border-radius:999px;border:1px solid #d6c8a6;background:#fffdf7;color:var(--paper-ink);font-size:14px;font-weight:600;cursor:pointer}
 .ochip.on{background:#2a251d;color:#fff8e6;border-color:#2a251d}
+.rawtext{margin-top:12px;font-size:13px;color:var(--muted)}
+.rawtext summary{cursor:pointer;padding:4px 0}
+.rawtext pre{white-space:pre-wrap;word-break:break-word;font:12.5px/1.45 var(--mono);color:#c9d0d8;background:#0f1114;border:1px solid #2f353d;border-radius:8px;padding:10px;max-height:30vh;overflow:auto;margin:6px 0 0}
 .dot{position:absolute;top:9px;right:9px;width:9px;height:9px;border-radius:50%;background:var(--amber);box-shadow:0 0 0 2px #16191d}
 .banner .btn{flex:none}
 .modal .small{font-size:13px;color:var(--muted)}
@@ -1142,11 +1145,16 @@ async function scanToFill(file) {
     if (!S.vault.settings.ocrOk) { S.vault.settings.ocrOk = true; await saveVault(false); }
     pp.set('Finding the text…', 0.45);
     const bmp = await createImageBitmap(file);
-    const res = await window.TijoriOCR.recognize(bmp, { maxSide: 1280, onProgress: f => pp.set('Reading the text…', 0.5 + f * 0.5) });
+    const keyField = T[type].key;
+    const judge = r => { const e = window.TijoriExtract.extract(type, r); const n = Object.keys(e.fields).length; return { score: n * 10 + (e.fields[keyField] ? 30 : 0), good: (!!e.fields[keyField] && n >= 2) || n >= 4 }; };
+    let msg = 'Reading the text…';
+    const best = await window.TijoriOCR.recognizeBest(bmp, judge, { maxSide: 1280,
+      onRetry: () => { msg = 'Photo looks sideways or upside down, turning it…'; },
+      onProgress: f => pp.set(msg, 0.5 + f * 0.5) });
     bmp.close && bmp.close();
     if (pp.cancelled || !S.draft || S.draft.key !== key) return;
     pp.close();
-    await reviewScan(window.TijoriExtract.extract(type, res), file, res);
+    await reviewScan(window.TijoriExtract.extract(type, best.res), file, best.res);
   } catch (e) {
     console.error(e); pp.close();
     if (!pp.cancelled) modal({ title: 'Couldn’t scan', html: `<p>${esc(e.message || 'Something went wrong while reading the photo.')}</p>` });
@@ -1164,7 +1172,9 @@ async function reviewScan(ex, file, res) {
     const same = cur && cur.replace(/\s/g, '').toUpperCase() === String(v).replace(/\s/g, '').toUpperCase();
     if (!same) rows.push({ k: fd.k, l: fd.l, v, cur, conf: sug.conf, fd });
   }
-  const attach = `<label class="sg-attach"><input type="checkbox" id="sg-att" checked> Also attach this photo to the document</label>`;
+  const rawText = res.lines.map(l => l.items.map(i => i.text).join('   ')).join('\n');
+  const attach = `<label class="sg-attach"><input type="checkbox" id="sg-att" checked> Also attach this photo to the document</label>` +
+    (rawText ? `<details class="rawtext"><summary>Show the text it read</summary><pre>${esc(rawText)}</pre></details>` : '');
   if (!rows.length) {
     const lines = res.lines.length;
     const r = await modal({ title: lines ? 'No new details found' : 'Couldn’t read any text', html: `<p>${lines ? `Read ${lines} line${lines > 1 ? 's' : ''} of text, but nothing matched the fields for a ${esc(lcName(t.n))}${Object.keys(ex.fields).length ? ' that you haven’t already filled' : ''}.` : 'Try again with the document filling the frame, in good light and without glare.'}</p>${attach}`,

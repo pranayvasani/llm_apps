@@ -65,8 +65,14 @@
         const nv = stripSep(next);
         if (nv && accept(nv)) return nv;
         if (below && L[li + 1]) {
-          const nl = L[li + 1].items && L[li + 1].items.length ? L[li + 1].items[0].text : L[li + 1].text;
-          const bv = stripSep(nl);
+          // value printed under the label: take the item in the next line that sits below it, not just the first one
+          const it = items[ii], nItems = L[li + 1].items && L[li + 1].items.length ? L[li + 1].items : [{ text: L[li + 1].text }];
+          let pick = nItems[0];
+          if (it.x0 != null && it.w && nItems.every(n => n.x0 != null)) {
+            const lc = it.x0 + it.w * Math.min(1, (m.index + m[0].length / 2) / Math.max(1, t.length));   // centre of the label text
+            pick = nItems.reduce((a, n) => Math.abs(n.x0 + n.w / 2 - lc) < Math.abs(a.x0 + a.w / 2 - lc) ? n : a);
+          }
+          const bv = stripSep(pick.text);
           if (bv && accept(bv)) return bv;
         }
       }
@@ -99,12 +105,15 @@
 
   /* ---------- per-field finders ---------- */
   function panNumber(text) {
-    const cands = text.toUpperCase().match(/\b[A-Z0-9]{10}\b/g) || [];
-    for (const c of cands) {
-      const fx = c.split('').map((ch, i) => (i < 5 || i === 9) ? toLetter(ch) : toDigit(ch)).join('');
-      if (/^[A-Z]{3}[PCHFATBLJG][A-Z]\d{4}[A-Z]$/.test(fx)) return { value: fx, conf: 'high' };
-      if (/^[A-Z]{5}\d{4}[A-Z]$/.test(fx)) return { value: fx, conf: 'medium' };
+    const fix = c => c.split('').map((ch, i) => (i < 5 || i === 9) ? toLetter(ch) : toDigit(ch)).join('');
+    const U = text.toUpperCase();
+    for (const c of (U.match(/\b[A-Z0-9]{10}\b/g) || [])) { const fx = fix(c); if (/^[A-Z]{3}[PCHFATBLJG][A-Z]\d{4}[A-Z]$/.test(fx)) return { value: fx, conf: 'high' }; }
+    // number split by a stray space or glued to a label: slide along lines that contain digits
+    for (const line of U.split('\n')) {
+      const s = line.replace(/[^A-Z0-9]/g, ''); if ((s.match(/\d/g) || []).length < 3) continue;
+      for (let i = 0; i + 10 <= s.length; i++) { const fx = fix(s.slice(i, i + 10)); if (/^[A-Z]{3}[PCHFATBLJG][A-Z]\d{4}[A-Z]$/.test(fx)) return { value: fx, conf: 'high' }; }
     }
+    for (const c of (U.match(/\b[A-Z0-9]{10}\b/g) || [])) { const fx = fix(c); if (/^[A-Z]{5}\d{4}[A-Z]$/.test(fx)) return { value: fx, conf: 'medium' }; }
     return null;
   }
   function aadhaarNumber(text) {
@@ -131,10 +140,12 @@
     return m ? { value: `${m[1]} ${m[2].padStart(2, '0')} ${m[3]} ${m[4].padStart(4, '0')}`, conf: 'high' } : null;
   }
   function dlNumber(text) {
-    const t = text.toUpperCase().replace(/[^\S\n]+/g, ' ');
-    const m = /\b([A-Z]{2})[\s-]?(\d{2})[\s-]?((?:19|20)\d{2})[\s-]?(\d{7})\b/.exec(t);
-    if (m) return { value: `${m[1]}${m[2]} ${m[3]}${m[4]}`, conf: 'high' };
-    const m2 = /\b([A-Z]{2}[\s-]?\d{2}[\s-]?\d{6,11})\b/.exec(t);
+    // state code + RTO (2 digits) + year (4) + 7 digits, e.g. MH12 20180045678. Fix common letter/digit mix-ups in the digit part.
+    for (const line of text.toUpperCase().split('\n')) {
+      const m = /\b([A-Z]{2})[\s\-\/]?([0-9OISBZ]{2})[\s\-\/]?([0-9OISBZ]{4})[\s\-\/]?([0-9OISBZ]{7})\b/.exec(line);
+      if (m) { const d = (m[2] + m[3] + m[4]).split('').map(toDigit).join(''); if (/^\d{13}$/.test(d) && /^(19|20)/.test(d.slice(2, 4))) return { value: `${m[1]}${d.slice(0, 2)} ${d.slice(2)}`, conf: 'high' }; }
+    }
+    const m2 = /\b([A-Z]{2}[\s\-]?\d{2}[\s\-\/]?\d{6,11})\b/.exec(text.toUpperCase());
     return m2 ? { value: clean(m2[1]), conf: 'medium' } : null;
   }
   function ifsc(text) {
@@ -181,9 +192,15 @@
       let father = textAfter(o, /father'?s\s*name/i, { accept: isNameLike });
       // fallback on the card's fixed layout: number, then holder's name, then father's name
       const num = panNumber(T);
-      if ((!name || !father) && num) {
-        const L = o.lines.map(l => clean(l.text)); const at = L.findIndex(l => l.toUpperCase().replace(/\s/g, '').includes(num.value.slice(0, 5)));
-        const people = L.slice(at + 1).filter(l => /^[A-Z][A-Z .']{2,40}$/.test(l) && l.split(' ').length >= 2 && !/(NAME|FATHER|BIRTH|SIGNATURE|DEPARTMENT|INDIA|CARD|INCOME|GOVT)/.test(l));
+      if (!name || !father) {
+        const L = o.lines.map(l => clean(l.text));
+        const at = num ? L.findIndex(l => l.toUpperCase().replace(/[^A-Z0-9]/g, '').includes(num.value.slice(0, 5))) : -1;
+        const person = l => /^[A-Z][A-Z .']{2,40}$/.test(l) && l.split(' ').length >= 2 && !/(NAME|FATHER|BIRTH|SIGNATURE|DEPARTMENT|INDIA|CARD|INCOME|GOVT|PERMANENT|ACCOUNT|NUMBER|TAX)/.test(l);
+        let people = at >= 0 ? L.slice(at + 1).filter(person) : [];
+        if (!people.length) {   // older cards: no labels; name and father's name are the two lines right above the date of birth
+          const di = L.findIndex(l => !!firstDate(l));
+          if (di > 0) people = L.slice(Math.max(0, di - 2), di).filter(l => person(l) && l.split(' ').every(w => w.length >= 2));
+        }
         if (!name && people[0]) name = people[0];
         if (!father && people[1] && people[1] !== name) father = people[1];
       }
@@ -206,12 +223,17 @@
     },
     id_other(o, T) { return { number: idAfter(o, /(id\s*no|number|no\.)/i), name: textAfter(o, /name/i, { accept: isNameLike }), expiry: dateAfter(o, /(valid|expiry|expires)/i) }; },
     dl(o, T) {
-      const cov = textAfter(o, /(cov|class(es)?\s*of\s*vehicle|vehicle\s*class)/i, { accept: v => /\b(LMV|MCWG|MCWOG|HMV|HGMV|HPMV|MGV|TRANS|LMV-?NT|INVCRG|e-?RICKSHAW|MC\s?50CC|3W)\b/i.test(v) });
-      const classes = cov ? (cov.toUpperCase().match(/\b(LMV-?NT|LMV-?TR|LMV|MCWG|MCWOG|HMV|HGMV|HPMV|MGV|TRANS|INVCRG|3W\w*|E-?RICKSHAW|MC\s?50CC)\b/g) || []).join(', ') : null;
-      const exp = dateAfter(o, /(valid(ity)?\s*\(?\s*nt|non[\s-]*transport|valid\s*till|validity|valid\s*upto)/i);
-      const ds = dates(T).map(d => d.iso).sort();
-      const rto = textAfter(o, /(issuing\s*authority|licensing\s*authority)/i, { accept: v => /[A-Za-z]{3}/.test(v) });
-      return { number: dlNumber(T), name: textAfter(o, /^name\b/i, { accept: isNameLike }), classes, rto: rto ? rto.toUpperCase().replace(/^.*?\b(RTO|DTO|ARTO)\b/, '$1') : null, issue: dateAfter(o, /(date\s*of\s*issue|issue\s*date|doi)/i), expiry: exp || (ds.length ? ds[ds.length - 1] : null) };
+      const cov = textAfter(o, /(cov|class(es)?\s*of\s*vehicle|vehicle\s*class|authori[sz]ation\s*to\s*drive)/i, { accept: v => /\b(LMV|MCWG|MCWOG|HMV|HGMV|HPMV|MGV|TRANS|LMV-?NT|INVCRG|e-?RICKSHAW|MC\s?50CC|3W)\b/i.test(v) });
+      const classes = (cov ? cov : T).toUpperCase().match(/\b(LMV-?NT|LMV-?TR|LMV|MCWG|MCWOG|HMV|HGMV|HPMV|MGV|TRANS|INVCRG|E-?RICKSHAW|MC\s?50CC)\b/g);
+      let issue = dateAfter(o, /(date\s*of\s*first\s*issue|first\s*issue|date\s*of\s*issue|issue\s*date|issued\s*on|\bdoi\b)/i);
+      let expiry = dateAfter(o, /(valid(ity)?\s*\(?\s*n\.?\s*t\b|non[\s-]*transport|valid\s*till|valid\s*up\s*to|valid\s*upto|validity|\bvalid\b)/i);
+      const ds = [...new Set(dates(T).map(d => d.iso))].sort();
+      if (!expiry && ds.length >= 2) expiry = ds[ds.length - 1];
+      if (issue && expiry && expiry <= issue) { const later = ds.filter(d => d > issue); expiry = later.length ? later[later.length - 1] : null; }   // validity always comes after issue
+      const rto = textAfter(o, /(issuing\s*authority|licensing\s*authority|\brto\b)/i, { accept: v => /[A-Za-z]{3}/.test(v) });
+      const byLbl = idAfter(o, /(d\.?\s*l\.?\s*(no|number)|licen[cs]e\s*(no|number))/i, 10);
+      const num = dlNumber(T) || (byLbl ? { value: byLbl.toUpperCase(), conf: 'medium' } : null);
+      return { number: num, name: textAfter(o, /^name\b/i, { accept: isNameLike }), classes: classes ? [...new Set(classes)].join(', ') : null, rto: rto ? rto.toUpperCase().replace(/^.*?(?=\b(RTO|DTO|ARTO))/, '').replace(/^(ARTO|RTO|DTO)(?=[A-Z])/, '$1 ') : null, issue, expiry };
     },
     rc(o, T) {
       return { reg: vehicleReg(T), model: textAfter(o, /(maker'?s?\s*(name|class)?|model|make)/i, { accept: v => v.length > 2 }), owner: textAfter(o, /owner'?s?\s*name|owner/i, { accept: isNameLike }), chassis: (m => m ? { value: m[0], conf: 'high' } : idAfter(o, /chassis|vin/i, 10))(/\b[A-HJ-NPR-Z0-9]{17}\b/.exec(T.toUpperCase())), engine: idAfter(o, /engine/i, 5), regdate: dateAfter(o, /(reg(n|istration)?\.?\s*date|date\s*of\s*reg)/i), expiry: dateAfter(o, /(reg(n|istration)?\.?\s*(valid|upto)|valid\s*upto|fitness\s*upto)/i) };

@@ -49,8 +49,9 @@
     return boxesFromProb(prob, rw, rh).map(b => ({ ...b, cx: b.cx * sx, cy: b.cy * sy, L: b.L * Math.hypot(Math.cos(b.ang) * sx, Math.sin(b.ang) * sy), T: b.T * Math.hypot(Math.sin(b.ang) * sx, Math.cos(b.ang) * sy) }));
   }
 
+  let lastStats = { elongated: 0, vertical: 0 };
   function boxesFromProb(prob, w, h) {
-    const thr = 0.3, boxThr = 0.55, unclip = 1.6;
+    const thr = 0.3, boxThr = 0.55, unclip = 1.6; let elongated = 0, vertical = 0;
     const lab = new Int32Array(w * h).fill(-1);
     const boxes = [];
     const stack = new Int32Array(w * h);
@@ -73,7 +74,9 @@
       const cx = mx / cnt, cy = my / cnt;
       const vxx = mxx / cnt - cx * cx, vyy = myy / cnt - cy * cy, vxy = mxy / cnt - cx * cy;
       let ang = 0.5 * Math.atan2(2 * vxy, vxx - vyy);
-      if (Math.abs(ang) > Math.PI / 4) ang = 0;  // keep near-horizontal text only
+      const major = (vxx + vyy) / 2 + Math.sqrt(((vxx - vyy) / 2) ** 2 + vxy * vxy), minor = (vxx + vyy) / 2 - Math.sqrt(((vxx - vyy) / 2) ** 2 + vxy * vxy);
+      if (major > 6 * Math.max(minor, 0.5)) { elongated++; if (Math.abs(ang) > Math.PI / 4) vertical++; }   // a line of text, and which way it runs
+      if (Math.abs(ang) > Math.PI / 4) ang = 0;  // read near-horizontal text only (sideways photos are rotated by recognizeBest)
       const ca = Math.cos(ang), sa = Math.sin(ang);
       let umin = 1e9, umax = -1e9, vmin = 1e9, vmax = -1e9;
       for (const p of pts) {
@@ -88,6 +91,7 @@
       if (T < 6 || L < 6) continue;
       boxes.push({ cx: cx + ucen * ca - vcen * sa, cy: cy + ucen * sa + vcen * ca, L, T, ang, score });
     }
+    lastStats = { elongated, vertical };
     return boxes;
   }
 
@@ -120,16 +124,30 @@
     return { text: text.trim(), conf: confN ? confSum / confN : 0 };
   }
 
-  async function recognize(src, { maxSide = 1600, onProgress } = {}) {
-    const canvas = toCanvas(src, maxSide);
-    const boxes = await detect(canvas);
+  function crop(src, x, y, w, h, maxSide) {
+    const s = Math.min(1, maxSide / Math.max(w, h)), c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(w * s)); c.height = Math.max(1, Math.round(h * s));
+    c.getContext('2d', { willReadFrequently: true }).drawImage(src, x, y, w, h, 0, 0, c.width, c.height); return c;
+  }
+  async function recognize(src, { maxSide = 1600, onProgress, zoom = true } = {}) {
+    let canvas = toCanvas(src, maxSide);
+    let boxes = await detect(canvas);
+    const stats = lastStats;
+    if (zoom && boxes.length) {   // document small in the frame: read the text area at full detail
+      let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+      for (const b of boxes) { const r = Math.max(b.L, b.T) / 2; x0 = Math.min(x0, b.cx - r); y0 = Math.min(y0, b.cy - b.T); x1 = Math.max(x1, b.cx + r); y1 = Math.max(y1, b.cy + b.T); }
+      const k = src.width / canvas.width, m = 0.06 * Math.max(x1 - x0, y1 - y0);
+      x0 = Math.max(0, x0 - m); y0 = Math.max(0, y0 - m); x1 = Math.min(canvas.width, x1 + m); y1 = Math.min(canvas.height, y1 + m);
+      const frac = ((x1 - x0) * (y1 - y0)) / (canvas.width * canvas.height);
+      if (frac < 0.55 && k > 1.05) { canvas = crop(src, x0 * k, y0 * k, (x1 - x0) * k, (y1 - y0) * k, maxSide); boxes = await detect(canvas); }
+    }
     const items = [];
     for (let i = 0; i < boxes.length; i++) {
       const r = await recognizeBox(canvas, boxes[i]);
       if (r.text) items.push({ ...r, cx: boxes[i].cx, cy: boxes[i].cy, w: boxes[i].L, h: boxes[i].T, ang: boxes[i].ang });
       onProgress && onProgress((i + 1) / boxes.length);
     }
-    return { items, lines: toLines(items), width: canvas.width, height: canvas.height };
+    return { items, lines: toLines(items), width: canvas.width, height: canvas.height, vertical: stats.elongated ? stats.vertical / stats.elongated : 0 };
   }
 
   function toLines(items) {
@@ -148,5 +166,27 @@
     return lines.sort((a, b) => a.cy - b.cy).map(l => ({ text: l.items.map(i => i.text).join('   '), items: l.items, cy: l.cy }));
   }
 
-  window.TijoriOCR = { init, recognize };
+  function rotated(src, deg) {
+    const w = src.width, h = src.height, c = document.createElement('canvas'); const swap = deg % 180 !== 0;
+    c.width = swap ? h : w; c.height = swap ? w : h;
+    const g = c.getContext('2d', { willReadFrequently: true }); g.translate(c.width / 2, c.height / 2); g.rotate(deg * Math.PI / 180); g.drawImage(src, -w / 2, -h / 2); return c;
+  }
+  // judge(result) -> { score, good }.  Reads upright first, then sideways/upside-down only if needed.
+  async function recognizeBest(src, judge, { maxSide = 1280, onProgress, onRetry } = {}) {
+    if (Math.max(src.width, src.height) > 2600) src = toCanvas(src, 2600);   // keep enough detail for zooming, but spare phone memory
+    const p = (a, b) => f => onProgress && onProgress(a + f * (b - a));
+    const first = await recognize(src, { maxSide, onProgress: p(0, 0.5) });
+    let best = { res: first, deg: 0, ...judge(first) };
+    if (best.good) { onProgress && onProgress(1); return best; }
+    const order = first.vertical > 0.5 ? [90, 270, 180] : [180, 90, 270];
+    for (let i = 0; i < order.length; i++) {
+      onRetry && onRetry(order[i]);
+      const r = await recognize(rotated(src, order[i]), { maxSide, onProgress: p(0.5 + 0.5 * i / order.length, 0.5 + 0.5 * (i + 1) / order.length) });
+      const j = judge(r); if (j.score > best.score) best = { res: r, deg: order[i], ...j };
+      if (j.good) break;
+    }
+    onProgress && onProgress(1);
+    return best;
+  }
+  window.TijoriOCR = { init, recognize, recognizeBest };
 })();
