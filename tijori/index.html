@@ -40,6 +40,9 @@ code{font-family:var(--mono);font-size:.92em;background:#ffffff14;padding:1px 5p
 .ib{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;position:relative;color:#cfd5dc;text-decoration:none}
 .ib:hover{background:#ffffff10}
 .badge{position:absolute;top:4px;right:3px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--red);color:#fff;font-size:11px;font-weight:750;display:grid;place-items:center}
+.dot{position:absolute;top:9px;right:9px;width:9px;height:9px;border-radius:50%;background:var(--amber);box-shadow:0 0 0 2px #16191d}
+.banner .btn{flex:none}
+.modal .small{font-size:13px;color:var(--muted)}
 .view{max-width:820px;margin:0 auto;padding:18px 16px calc(110px + env(safe-area-inset-bottom))}
 
 /* ---------- home ---------- */
@@ -231,6 +234,8 @@ select.dark{background:#111418;border:1px solid var(--line);color:var(--ink);bor
 .modal h2{margin:0 0 10px;font-size:18px}
 .modal p{color:#b9c1ca;margin:0 0 12px}
 .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+.modal-actions{flex-wrap:wrap}
+@media(max-width:480px){.modal-actions .btn{flex:1 1 auto}}
 .mf{display:grid;gap:12px}
 .mf label{display:grid;gap:6px;font-size:13px;color:var(--muted)}
 .mf input{padding:11px 12px;border-radius:10px;border:1px solid #39404a;background:#0f1114;color:var(--ink);font-size:16px;outline:none;width:100%}
@@ -314,6 +319,7 @@ const P = {
   x: '<path d="M18 6 6 18M6 6l12 12"/>',
   shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
   ext: '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3"/>',
+  share: '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/>',
   wifiOff: '<path d="M1 1l22 22M16.72 11.06A10.94 10.94 0 0 1 19 12.55M5 12.55a10.94 10.94 0 0 1 5.17-2.39M10.71 5.05A16 16 0 0 1 22.58 9M1.42 9a15.91 15.91 0 0 1 4.7-2.88M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01"/>',
 };
 const icon = n => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${P[n] || ''}</svg>`;
@@ -403,10 +409,63 @@ function newVault() {
   return { v: 1, created: Date.now(), updated: Date.now(), settings: { autoLock: 5 }, lastBackup: null,
     drawers: DEFAULT_DRAWERS.map((d, i) => ({ id: d.id, name: d.name, icon: d.icon, color: d.color, order: i, builtin: true })), items: [], deleted: {} };
 }
-async function saveVault() {
+// markChange=false for saves that don't change documents (settings, backup bookkeeping)
+async function saveVault(markChange = true) {
   S.vault.updated = Date.now();
+  if (markChange) S.vault.lastChange = Date.now();
   await kvSet('vault', await encryptBytes(S.key, enc.encode(JSON.stringify(S.vault))));
 }
+/* how many documents changed since the last backup */
+function unbackedCount() {
+  const lb = S.vault.lastBackup || 0;
+  return S.vault.items.filter(i => (i.updated || 0) > lb).length + Object.values(S.vault.deleted || {}).filter(ts => ts > lb).length;
+}
+function needsBackup() {
+  const lb = S.vault.lastBackup || 0;
+  if (!S.vault.items.length && !lb) return false;
+  return unbackedCount() > 0 || (S.vault.lastChange || 0) > lb;
+}
+function ago(ts) {
+  const d = Math.floor((Date.now() - ts) / DAY);
+  return d <= 0 ? 'today' : d === 1 ? 'yesterday' : d < 30 ? `${d} days ago` : fmtDate(new Date(ts));
+}
+function backupBanner(compact) {
+  if (!needsBackup()) return '';
+  const n = unbackedCount(), lb = S.vault.lastBackup;
+  const head = n ? `${n} change${n > 1 ? 's' : ''} not backed up` : 'Changes not backed up';
+  const sub = compact ? (lb ? `Last backup ${ago(lb)}` : 'Never backed up')
+    : `${lb ? `Last backup ${ago(lb)}.` : 'This cabinet has never been backed up.'} If this phone is lost or Chrome’s site data is cleared, anything not backed up is gone.`;
+  return `<div class="banner info">${icon('download')}<span class="grow"><b>${head}</b><br><small>${sub}</small></span><button class="btn sm primary" data-act="export">Back up</button></div>`;
+}
+/* ---------- sharing ---------- */
+function canShareFiles(files) { try { return !!(navigator.canShare && navigator.canShare({ files })); } catch { return false; } }
+async function shareFiles(files, title) {
+  if (!canShareFiles(files)) {
+    files.forEach(f => download(f, f.name));
+    return toast('Sharing isn’t available in this browser, so it was saved to Downloads');
+  }
+  const go = () => navigator.share({ files, title });
+  try { await go(); return true; }
+  catch (e) {
+    if (e.name === 'AbortError') return false;
+    if (e.name === 'NotAllowedError') { // decrypting took long enough for the browser to want a fresh tap
+      const ok = await modal({ title: 'Ready to share', html: `<p>${files.length} file${files.length > 1 ? 's' : ''} ready.</p>`, actions: [{ label: 'Cancel', value: false }, { label: 'Share', cls: 'primary', value: true }] });
+      if (!ok) return false;
+      try { await go(); return true; } catch (e2) { if (e2.name !== 'AbortError') toast('Couldn’t share: ' + e2.message); return false; }
+    }
+    toast('Couldn’t share: ' + e.message); return false;
+  }
+}
+function shareName(a, title, i, n) {
+  const ext = (a.name.match(/\.[a-z0-9]{2,5}$/i) || [a.mime === 'application/pdf' ? '.pdf' : '.jpg'])[0];
+  const base = String(title || 'document').replace(/[\\/:*?"<>|]+/g, '').trim() || 'document';
+  return `${base}${n > 1 ? ` (${i + 1})` : ''}${ext}`;
+}
+async function attFile(a, title, i, n) {
+  const rec = await blobGet(a.id); if (!rec) return null;
+  return new File([await decryptBytes(S.key, rec)], shareName(a, title, i, n), { type: a.mime });
+}
+const itemOfAtt = id => (S.draft && S.draft.item.attachments.some(a => a.id === id)) ? S.draft.item : S.vault.items.find(i => (i.attachments || []).some(a => a.id === id));
 const sortedDrawers = () => [...S.vault.drawers].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 const drawerById = id => S.vault.drawers.find(d => d.id === id);
 const itemById = id => S.vault.items.find(i => i.id === id);
@@ -455,6 +514,7 @@ function toast(msg) {
 }
 function modal({ title, html = '', actions = [{ label: 'OK', value: true, cls: 'primary' }], onOpen }) {
   return new Promise(res => {
+    const tt = $('.toast'); if (tt) tt.classList.remove('show');
     const ov = document.createElement('div'); ov.className = 'modal-ov';
     ov.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-label="${esc(title)}"><h2>${esc(title)}</h2><div class="modal-body">${html}</div><div class="modal-actions">${actions.map((a, i) => `<button type="button" class="btn ${a.cls || ''}" data-i="${i}">${esc(a.label)}</button>`).join('')}</div></div>`;
     const close = v => { ov.remove(); res(v); };
@@ -541,7 +601,7 @@ async function onSetup(form) {
   S.key = await deriveKey(p1, salt, ITER);
   S.meta = { v: 1, salt, iter: ITER, created: Date.now() };
   S.vault = newVault();
-  await kvSet('meta', S.meta); await saveVault();
+  await kvSet('meta', S.meta); await saveVault(false);
   S.hasVault = true; S.last = Date.now();
   try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch {}
   if (location.hash !== '#/') location.hash = '#/'; else render();
@@ -581,7 +641,7 @@ function header() {
     <nav class="top-actions">
       <a class="ib" href="#/search" aria-label="Search">${icon('search')}</a>
       <a class="ib" href="#/due" aria-label="Renewals and expiries">${icon('bell')}${n ? `<span class="badge">${n}</span>` : ''}</a>
-      <a class="ib" href="#/settings" aria-label="Settings and backup">${icon('gear')}</a>
+      <a class="ib" href="#/settings" aria-label="Settings and backup${needsBackup() ? ' (backup needed)' : ''}">${icon('gear')}${needsBackup() ? '<span class="dot"></span>' : ''}</a>
       <button class="ib" data-act="lock" aria-label="Lock now">${icon('lock')}</button>
     </nav></header>`;
 }
@@ -596,9 +656,7 @@ function vHome() {
     const ex = att.filter(x => x.d.days < 0).length;
     banners += `<a class="banner warn" href="#/due">${icon('bell')}<span class="grow"><b>${att.length} ${att.length > 1 ? 'documents need' : 'document needs'} attention</b><br><small>${ex ? `${ex} expired · ` : ''}renewals due within 30 days</small></span>${icon('chev')}</a>`;
   }
-  if (V.items.length && (!V.lastBackup || Date.now() - V.lastBackup > 30 * DAY)) {
-    banners += `<a class="banner info" href="#/settings">${icon('download')}<span class="grow"><b>${V.lastBackup ? 'Your backup is over a month old' : 'No backup yet'}</b><br><small>Your cabinet exists only on this device. Export an encrypted copy.</small></span>${icon('chev')}</a>`;
-  }
+  banners += backupBanner(false);
   return `<div class="privacy-pill">${icon('shield')} Encrypted · on this device only · network blocked</div>${banners}
     <div class="cabinet"><div class="cab-top"><span class="keyhole"></span></div><div class="cab-body">${sortedDrawers().map(drawerHTML).join('')}</div><div class="cab-base"></div></div>
     <button class="add-drawer" data-act="new-drawer">${icon('plus')} Add a drawer</button>
@@ -624,7 +682,7 @@ function vDrawer(id) {
   const filters = owners.length > 1 ? `<div class="filters"><button class="fchip ${!of ? 'on' : ''}" data-act="owner" data-d="${esc(id)}" data-o="">Everyone</button>${owners.map(o => `<button class="fchip ${of === o ? 'on' : ''}" data-act="owner" data-d="${esc(id)}" data-o="${esc(o)}">${esc(o)}</button>`).join('')}</div>` : '';
   const body = items.length ? items.map(folderHTML).join('')
     : `<div class="empty"><div class="big">${esc(d.icon)}</div><p>This drawer is empty.</p><a class="btn primary" href="#/new/${esc(id)}">${icon('plus')} Add the first document</a></div>`;
-  return pageHead('#/', `<span>${esc(d.icon)}</span><span class="t">${esc(d.name)}</span>`) + filters +
+  return pageHead('#/', `<span>${esc(d.icon)}</span><span class="t">${esc(d.name)}</span>`) + backupBanner(true) + filters +
     `<div class="tray" style="--accent:${safeColor(d.color)}">${body}</div>
      <a class="fab" href="#/new/${esc(id)}">${icon('plus')} Add</a>`;
 }
@@ -652,7 +710,9 @@ function vItem(id) {
     ${rows ? `<dl class="rows">${rows}</dl>` : `<p class="muted-p">No details yet. <a href="#/edit/${esc(it.id)}">Add them</a>.</p>`}
     ${it.notes ? `<h3 class="sec">Notes</h3><div class="notes">${esc(it.notes)}</div>` : ''}
     <h3 class="sec">Scans & files</h3>
-    ${atts.length ? `<div class="atts">${atts.map(a => attHTML(a, false)).join('')}</div>` : `<p class="muted-p">No scans yet. <a href="#/edit/${esc(it.id)}">Add a photo or PDF</a>.</p>`}
+    ${atts.length ? `<div class="atts">${atts.map(a => attHTML(a, false)).join('')}</div>
+      <div class="att-add"><button class="btn sm primary" data-act="share-atts" data-id="${esc(it.id)}">${icon('share')} Share ${atts.length > 1 ? `all ${atts.length} scans` : 'scan'}</button></div>`
+      : `<p class="muted-p">No scans yet. <a href="#/edit/${esc(it.id)}">Add a photo or PDF</a>.</p>`}
     <div class="sheet-actions">
       ${di && di.days >= 0 ? `<button class="btn sm" data-act="ics" data-id="${esc(it.id)}">${icon('cal')} Remind me in my calendar</button>` : ''}
       <select class="mv" data-change="move" data-id="${esc(it.id)}" aria-label="Move to drawer"><option value="" selected disabled>Move to drawer…</option>${sortedDrawers().filter(x => x.id !== it.drawerId).map(x => `<option value="${esc(x.id)}">${esc(x.icon)} ${esc(x.name)}</option>`).join('')}</select>
@@ -871,9 +931,10 @@ function vSettings() {
     <div class="set-row"><span>Auto-lock after inactivity</span><select class="dark" data-change="autolock" aria-label="Auto-lock minutes">${[1, 2, 5, 10, 15, 30].map(m => `<option value="${m}" ${+V.settings.autoLock === m ? 'selected' : ''}>${m} min</option>`).join('')}</select></div>
     <div class="set-row"><span>Passphrase</span><button class="btn sm" data-act="change-pass">Change</button></div></section>
   <section class="panel"><h2>Backup & moving between devices</h2>
-    <p>Nothing syncs by itself. To put your cabinet on your phone or laptop, export a backup here and import it on the other device. You can move the file by USB, Nearby Share or AirDrop; it stays encrypted with your passphrase. Importing merges the two: the newer version of each document wins, and nothing is duplicated.</p>
-    <div class="set-row"><span>Last backup<br><small class="muted">${V.lastBackup ? fmtDate(new Date(V.lastBackup)) : 'Never'}</small></span>
-      <span class="btns"><button class="btn sm primary" data-act="export">${icon('download')} Export</button><label class="btn sm">${icon('upload')} Import<input type="file" data-change="import" hidden></label></span></div></section>
+    <p>Nothing syncs by itself, and your cabinet lives only in this browser. Back up whenever you’ve added or changed documents; the cabinet reminds you when there are changes that haven’t been backed up. Save the file to Downloads or send it to your laptop. It stays encrypted with your passphrase wherever it goes.</p>
+    <p>To restore, or to copy the cabinet to another device, use Import there. Importing merges the two: the newer version of each document wins, and nothing is duplicated.</p>
+    <div class="set-row"><span>Last backup<br><small class="muted">${V.lastBackup ? `${fmtDate(new Date(V.lastBackup))}${needsBackup() ? ` · ${unbackedCount() || 'some'} change${unbackedCount() === 1 ? '' : 's'} since` : ' · up to date'}` : 'Never'}</small></span>
+      <span class="btns"><button class="btn sm primary" data-act="export">${icon('download')} Back up now</button><label class="btn sm">${icon('upload')} Import<input type="file" data-change="import" hidden></label></span></div></section>
   <section class="panel"><h2>Drawers</h2>
     ${sortedDrawers().map(d => `<div class="set-row"><span>${esc(d.icon)} ${esc(d.name)} <small class="muted">· ${counts(d.id)}</small></span><span class="btns"><button class="btn sm" data-act="rename-drawer" data-id="${esc(d.id)}">Edit</button>${counts(d.id) === 0 ? `<button class="btn sm danger" data-act="delete-drawer" data-id="${esc(d.id)}">Remove</button>` : ''}</span></div>`).join('')}
     <div class="set-row"><span class="muted">Need another drawer?</span><button class="btn sm" data-act="new-drawer">${icon('plus')} Add drawer</button></div></section>
@@ -921,14 +982,20 @@ function findAtt(id) {
   return pool.find(a => a.id === id);
 }
 async function openViewer(a) {
-  const url = await blobURL(a.id, a.mime); if (!url) return toast('Couldn’t open that file');
-  const isImg = a.mime.startsWith('image/');
+  const it = itemOfAtt(a.id); const list = (it && it.attachments) || [a]; const idx = Math.max(0, list.findIndex(x => x.id === a.id));
+  const file = await attFile(a, it && (it.title || (T[it.type] || T.note).n), idx, list.length);
+  if (!file) return toast('Couldn’t open that file');
+  const url = URL.createObjectURL(file); S.urls.add(url);
+  const isImg = a.mime.startsWith('image/'); const nm = esc(file.name);
   const ov = document.createElement('div'); ov.className = 'viewer'; ov.setAttribute('role', 'dialog');
-  ov.innerHTML = `<div class="viewer-bar"><span>${esc(a.name)} · ${fmtSize(a.size)}</span><a class="vbtn" href="${url}" download="${esc(a.name)}" aria-label="Save a copy">${icon('download')}</a><button class="vbtn" data-close aria-label="Close">${icon('x')}</button></div>
-    <div class="viewer-body">${isImg ? `<img src="${url}" alt="${esc(a.name)}">` : `<div class="viewer-file">${icon('file')}<p>${esc(a.name)}</p><p class="muted">${fmtSize(a.size)}</p><a class="btn primary" href="${url}" target="_blank" rel="noopener">${icon('ext')} Open</a> <a class="btn" href="${url}" download="${esc(a.name)}">${icon('download')} Save copy</a></div>`}</div>`;
+  ov.innerHTML = `<div class="viewer-bar"><span>${nm} · ${fmtSize(a.size)}</span><button class="vbtn" data-share aria-label="Share">${icon('share')}</button><a class="vbtn" href="${url}" download="${nm}" aria-label="Save a copy">${icon('download')}</a><button class="vbtn" data-close aria-label="Close">${icon('x')}</button></div>
+    <div class="viewer-body">${isImg ? `<img src="${url}" alt="${nm}">` : `<div class="viewer-file">${icon('file')}<p>${nm}</p><p class="muted">${fmtSize(a.size)}</p><a class="btn primary" href="${url}" target="_blank" rel="noopener">${icon('ext')} Open</a> <button class="btn" data-share>${icon('share')} Share</button> <a class="btn" href="${url}" download="${nm}">${icon('download')} Save copy</a></div>`}</div>`;
   const close = () => { ov.remove(); document.removeEventListener('keydown', onKey); };
   const onKey = e => { if (e.key === 'Escape') close(); };
-  ov.addEventListener('click', e => { if (e.target.closest('[data-close]') || e.target.classList.contains('viewer-body')) close(); });
+  ov.addEventListener('click', e => {
+    if (e.target.closest('[data-share]')) { shareFiles([file], file.name); return; }
+    if (e.target.closest('[data-close]') || e.target.classList.contains('viewer-body')) close();
+  });
   document.addEventListener('keydown', onKey);
   document.body.appendChild(ov);
 }
@@ -999,17 +1066,37 @@ const ACT = {
     if (!await confirmM('Remove drawer?', `“${d.name}” is empty and will be removed.`, 'Remove', true)) return;
     S.vault.drawers = S.vault.drawers.filter(x => x.id !== d.id); await saveVault(); render();
   },
-  export: async el => {
+  'share-atts': async el => {
+    const it = itemById(el.dataset.id); const atts = it.attachments || []; if (!atts.length) return;
     el.disabled = true;
+    try {
+      const files = (await Promise.all(atts.map((a, i) => attFile(a, it.title, i, atts.length)))).filter(Boolean);
+      await shareFiles(files, it.title);
+    } finally { el.disabled = false; }
+  },
+  export: async el => {
+    el.disabled = true; let json; const now = Date.now();
     try {
       const blobs = {};
       for (const k of await blobKeys()) { const r = await blobGet(k); blobs[k] = { iv: b64(r.iv), ct: b64(r.ct) }; }
-      S.vault.lastBackup = Date.now();
-      const v = await encryptBytes(S.key, enc.encode(JSON.stringify(S.vault)));
-      const out = { app: 'tijori', format: 1, exported: new Date().toISOString(), kdf: { salt: b64(S.meta.salt), iter: S.meta.iter }, vault: { iv: b64(v.iv), ct: b64(v.ct) }, blobs };
-      download(new Blob([JSON.stringify(out)], { type: 'application/octet-stream' }), `tijori-backup-${isoDate(new Date())}.tijori`);
-      await saveVault(); render(); toast('Encrypted backup saved to your downloads');
+      const v = await encryptBytes(S.key, enc.encode(JSON.stringify({ ...S.vault, lastBackup: now })));
+      json = JSON.stringify({ app: 'tijori', format: 1, exported: new Date(now).toISOString(), kdf: { salt: b64(S.meta.salt), iter: S.meta.iter }, vault: { iv: b64(v.iv), ct: b64(v.ct) }, blobs });
     } finally { el.disabled = false; }
+    const date = isoDate(new Date(now));
+    // Browsers only let a short list of file types be shared, so the shared copy is a .txt (same contents; Import accepts it).
+    const shareFile = new File([json], `tijori-backup-${date}.txt`, { type: 'text/plain' });
+    const canShare = canShareFiles([shareFile]);
+    const n = S.vault.items.length, scans = S.vault.items.reduce((s, i) => s + (i.attachments || []).length, 0);
+    const choice = await modal({ title: 'Backup ready',
+      html: `<p>${n} document${n === 1 ? '' : 's'} and ${scans} scan${scans === 1 ? '' : 's'}, ${fmtSize(json.length)}, encrypted with your passphrase.</p>
+        <p>Keep it off this device as well, on your laptop or a USB drive, so it survives a lost phone.</p>
+        ${canShare ? '<p class="small">“Send to…” opens your share sheet: Quick Share, AirDrop, Files or any app you choose. The file stays encrypted wherever it goes.</p>' : ''}`,
+      actions: [{ label: 'Cancel', value: null }, { label: 'Save to Downloads', value: 'dl', cls: canShare ? '' : 'primary' }, ...(canShare ? [{ label: 'Send to…', value: 'share', cls: 'primary' }] : [])] });
+    if (!choice) return;
+    if (choice === 'dl') download(new Blob([json], { type: 'application/octet-stream' }), `tijori-backup-${date}.tijori`);
+    else if (!(await shareFiles([shareFile], 'Tijori backup'))) return;
+    S.vault.lastBackup = now; await saveVault(false); render();
+    toast(choice === 'dl' ? 'Backup saved to Downloads' : 'Backup sent');
   },
   'change-pass': async () => {
     const r = await modal({ title: 'Change passphrase',
@@ -1091,7 +1178,7 @@ document.addEventListener('change', async e => {
     if (c === 'att') { const files = [...el.files]; el.value = ''; await addFiles(files); }
     else if (c === 'import') { const file = el.files[0]; el.value = ''; if (file) await importBackup(file); }
     else if (c === 'move') { const it = itemById(el.dataset.id); it.drawerId = el.value; it.updated = Date.now(); await saveVault(); const d = drawerById(el.value); render(); toast(`Moved to ${d.name}`); }
-    else if (c === 'autolock') { S.vault.settings.autoLock = +el.value; await saveVault(); toast(`Locks after ${el.value} min idle`); }
+    else if (c === 'autolock') { S.vault.settings.autoLock = +el.value; await saveVault(false); toast(`Locks after ${el.value} min idle`); }
   } catch (err) { console.error(err); toast(err.message || 'Something went wrong'); }
 });
 document.addEventListener('input', e => {
@@ -1140,7 +1227,11 @@ document.addEventListener('visibilitychange', () => {
   showLock();
   if (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
     const l = document.createElement('link'); l.rel = 'manifest'; l.href = 'manifest.json'; document.head.appendChild(l);
-    if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+    if ('serviceWorker' in navigator) {
+      const hadController = !!navigator.serviceWorker.controller;
+      navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController) toast('Tijori was updated. Close and reopen it to get the new version.'); });
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    }
   }
 })();
 })();

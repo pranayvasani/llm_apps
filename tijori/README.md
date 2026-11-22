@@ -17,10 +17,17 @@ policy (`connect-src 'none'`) makes the browser block every network request the 
    After that it runs offline. The host only serves the app's code. Your documents stay in the
    phone's own storage.
 
-## Moving data between phone and desktop
-Go to Settings → Export to save a `.tijori` file. It's encrypted with your passphrase. Send it
-to the other device by USB, Nearby Share or AirDrop, then go to Settings → Import there.
-Importing merges the two cabinets, and the newer version of each document wins.
+## Backups and moving data between devices
+The cabinet reminds you whenever there are changes that haven't been backed up. Tap **Back up** and
+choose **Save to Downloads** or **Send to…**, which opens the share sheet (Quick Share, AirDrop,
+Files…). The file is encrypted with your passphrase. To restore, or to copy the cabinet to another
+device, go to Settings → Import there. Importing merges the two cabinets, and the newer version of
+each document wins.
+
+## Sharing scans
+Open a document and tap **Share scan** (or **Share all scans**), or use the share button while
+viewing a photo or PDF. The file is decrypted for that one share and sent to the app you pick, such
+as WhatsApp or email. Shared copies are no longer protected by Tijori.
 
 ## Things to know
 - If you forget the passphrase, nothing can be recovered. Keep regular backups.
