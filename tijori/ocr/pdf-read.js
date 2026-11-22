@@ -11,10 +11,10 @@
     return lib;
   }
 
-  // askPassword(wrongBefore) -> string | null (null = cancelled)
-  async function open(bytes, base, askPassword) {
+  // askPassword(wrongBefore) -> string | { pw, remember } | null (null = cancelled).  knownPassword is tried first, silently.
+  async function open(bytes, base, askPassword, knownPassword) {
     const pdfjs = await load(base);
-    let password, wrong = false;
+    let password = knownPassword || undefined, remember = true;
     for (;;) {
       const task = pdfjs.getDocument({
         data: bytes.slice(),                 // the worker takes ownership of the buffer, so pass a copy each try
@@ -25,11 +25,13 @@
         useSystemFonts: true,
         stopAtErrors: false,
       });
-      try { const doc = await task.promise; doc.__task = task; return doc; }
+      try { const doc = await task.promise; doc.__task = task; doc.__password = password; doc.__remember = remember; return doc; }
       catch (e) {
         if (e && e.name === 'PasswordException') {
-          password = await askPassword(wrong); wrong = true;
-          if (password == null) { const c = new Error('Cancelled'); c.cancelled = true; throw c; }
+          const r = await askPassword(e.code === 2 && password !== knownPassword);   // code 2 = a password was given and was wrong
+          if (r == null) { const c = new Error('Cancelled'); c.cancelled = true; throw c; }
+          if (typeof r === 'object') { password = r.pw; remember = r.remember !== false; } else password = r;
+          knownPassword = null;
           continue;
         }
         throw new Error('Couldn’t open this PDF' + (e && e.message ? ` (${e.message})` : '') + '.');
@@ -88,6 +90,19 @@
     }
   }
 
+  // Render one page to a canvas, cssWidth wide on screen, sharp on high-density screens.
+  async function renderPage(doc, n, cssWidth, dpr = 1) {
+    const page = await doc.getPage(n);
+    const v1 = page.getViewport({ scale: 1 });
+    const scale = Math.min(4, (cssWidth * dpr) / v1.width);
+    const vp = page.getViewport({ scale });
+    const c = document.createElement('canvas'); c.width = Math.ceil(vp.width); c.height = Math.ceil(vp.height);
+    const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+    await page.render({ canvas: c, canvasContext: g, viewport: vp }).promise;
+    page.cleanup();
+    return c;
+  }
+  async function pageSize(doc, n) { const v = (await doc.getPage(n)).getViewport({ scale: 1 }); return { w: v.width, h: v.height }; }
   async function close(doc) { try { await (doc.__task ? doc.__task.destroy() : doc.cleanup && doc.cleanup()); } catch {} }
-  window.TijoriPDF = { open, pages, close };
+  window.TijoriPDF = { open, pages, close, renderPage, pageSize };
 })();
