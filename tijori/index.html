@@ -55,7 +55,7 @@ code{font-family:var(--mono);font-size:.92em;background:#ffffff14;padding:1px 5p
 .scanbar b{display:block;font-size:14.5px}
 .scanbar small{display:block;color:var(--paper-muted);font-size:12.5px;line-height:1.35;margin-top:2px}
 .scanbar .btns{justify-content:flex-start}
-.sg-list{display:grid;gap:8px;max-height:52vh;overflow:auto;margin:4px -4px 0;padding:2px 4px}
+.sg-list{display:grid;gap:8px;margin:4px 0 0}
 .sg{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;align-items:center;padding:9px 10px;border-radius:10px;background:#ffffff08;border:1px solid #2f353d}
 .sg input[type=checkbox]{width:19px;height:19px;accent-color:#e6c46e;grid-row:span 2}
 .sg .sg-l{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:700}
@@ -74,6 +74,7 @@ code{font-family:var(--mono);font-size:.92em;background:#ffffff14;padding:1px 5p
 .ochip.on{background:#2a251d;color:#fff8e6;border-color:#2a251d}
 .rawtext{margin-top:12px;font-size:13px;color:var(--muted)}
 .rawtext summary{cursor:pointer;padding:4px 0}
+.rawtext .btn{margin:6px 0 2px}
 .rawtext pre{white-space:pre-wrap;word-break:break-word;font:12.5px/1.45 var(--mono);color:#c9d0d8;background:#0f1114;border:1px solid #2f353d;border-radius:8px;padding:10px;max-height:30vh;overflow:auto;margin:6px 0 0}
 .savebar{position:sticky;bottom:calc(10px + env(safe-area-inset-bottom));z-index:5;margin:22px -8px 0;padding:10px;border-radius:14px;background:rgba(247,241,227,.94);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);box-shadow:0 -2px 0 rgba(0,0,0,.04),0 8px 24px rgba(0,0,0,.28)}
 .savebar .btn{flex:1 1 auto}
@@ -278,7 +279,10 @@ select.dark{background:#111418;border:1px solid var(--line);color:var(--ink);bor
 .modal{width:100%;max-width:440px;background:#1d2126;border:1px solid #333a43;border-radius:18px;padding:20px;box-shadow:0 30px 60px rgba(0,0,0,.6);animation:rise .22s cubic-bezier(.2,.8,.2,1);margin-bottom:env(safe-area-inset-bottom)}
 .modal h2{margin:0 0 10px;font-size:18px}
 .modal p{color:#b9c1ca;margin:0 0 12px}
-.modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+.modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;flex:none}
+.modal{max-height:calc(100dvh - 28px - env(safe-area-inset-top) - env(safe-area-inset-bottom));display:flex;flex-direction:column}
+.modal h2{flex:none}
+.modal-body{overflow:auto;min-height:0;flex:1 1 auto;margin:0 -6px;padding:0 6px;overscroll-behavior:contain}
 .modal-actions{flex-wrap:wrap}
 @media(max-width:480px){.modal-actions .btn{flex:1 1 auto}}
 .mf{display:grid;gap:12px}
@@ -290,6 +294,7 @@ select.dark{background:#111418;border:1px solid var(--line);color:var(--ink);bor
 .sw.on{outline:3px solid #fff;outline-offset:2px}
 .toast{position:fixed;left:50%;bottom:calc(92px + env(safe-area-inset-bottom));transform:translate(-50%,16px);opacity:0;pointer-events:none;background:#f4f6f8;color:#111;padding:10px 16px;border-radius:12px;font-weight:650;font-size:14px;box-shadow:0 10px 30px rgba(0,0,0,.5);transition:.2s;z-index:300;max-width:90vw;text-align:center}
 .toast.show{opacity:1;transform:translate(-50%,0)}
+body:has(.modal-ov) .toast{bottom:auto;top:calc(16px + env(safe-area-inset-top))}
 .viewer{position:fixed;inset:0;z-index:150;background:#000;display:flex;flex-direction:column;animation:fade .15s}
 .viewer-bar{display:flex;align-items:center;gap:6px;padding:calc(8px + env(safe-area-inset-top)) 10px 8px 16px;color:#fff}
 .viewer-bar span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}
@@ -589,11 +594,11 @@ function download(blob, name) {
   a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
-async function copyText(v) {
+async function copyText(v, secs = 30) {
   try {
     await navigator.clipboard.writeText(v);
-    toast('Copied · clipboard clears in 30 s');
-    clearTimeout(S.clipT); S.clipT = setTimeout(() => navigator.clipboard.writeText('').catch(() => {}), 30000);
+    toast(`Copied · clipboard clears in ${secs >= 60 ? Math.round(secs / 60) + ' min' : secs + ' s'}`);
+    clearTimeout(S.clipT); S.clipT = setTimeout(() => navigator.clipboard.writeText('').catch(() => {}), secs * 1000);
   } catch { toast('Couldn’t copy on this browser'); }
 }
 function revokeUrls() { S.urls.forEach(u => URL.revokeObjectURL(u)); S.urls.clear(); }
@@ -1328,12 +1333,13 @@ async function reviewScan(ex, newFiles, texts, { sources = 1, skipped = [] } = {
   const nf = newFiles.length;
   const attach = (nf ? `<label class="sg-attach"><input type="checkbox" id="sg-att" checked> Also attach ${nf === 1 ? 'this file' : `these ${nf} files`} to the document</label>` : '') +
     (skipped.length ? `<p class="small">Skipped: ${esc(skipped.join(', '))}</p>` : '') +
-    (rawText.trim() ? `<details class="rawtext"><summary>Show the text it read</summary><pre>${esc(rawText)}</pre></details>` : '');
+    (rawText.trim() ? `<details class="rawtext"><summary>Show the text it read</summary><button type="button" class="btn sm" data-copy-raw>${icon('copy')} Copy all text</button><pre>${esc(rawText)}</pre></details>` : '');
+  const onOpen = ov => ov.addEventListener('click', e => { if (e.target.closest('[data-copy-raw]')) copyText(rawText, 120); });
   const wantAttach = ov => { const c = ov.querySelector('#sg-att'); return !!(c && c.checked); };
   if (!rows.length) {
     const lines = texts.reduce((a, x) => a + x.res.lines.length, 0);
     const r = await modal({ title: lines ? 'No new details found' : 'Couldn’t read any text', html: `<p>${lines ? `Read ${lines} line${lines > 1 ? 's' : ''} of text, but nothing matched the fields for a ${esc(lcName(t.n))}${Object.keys(ex.fields).length ? ' that you haven’t already filled' : ''}.` : 'Try again with the document filling the frame, in good light and without glare.'}</p>${attach}`,
-      actions: [{ label: 'Close', cls: 'primary', value: ov => ({ att: wantAttach(ov) }) }] });
+      actions: [{ label: 'Close', cls: 'primary', value: ov => ({ att: wantAttach(ov) }) }], onOpen });
     if (r && r.att) await addFiles(newFiles);
     return;
   }
@@ -1342,7 +1348,7 @@ async function reviewScan(ex, newFiles, texts, { sources = 1, skipped = [] } = {
   const collect = (ov, save) => ({ save,
     vals: [...ov.querySelectorAll('[data-c]')].filter(c => c.checked).map(c => ({ k: c.dataset.c, v: ov.querySelector(`.sg-v[data-k="${c.dataset.c}"]`).value.trim() })).filter(x => x.v),
     att: wantAttach(ov) });
-  const picked = await modal({ title: `Scanned ${lcName(t.n)}`, html, actions: [{ label: 'Cancel', value: null }, { label: 'Fill in only', value: ov => collect(ov, false) }, { label: 'Save to cabinet', cls: 'primary', value: ov => collect(ov, true) }] });
+  const picked = await modal({ title: `Scanned ${lcName(t.n)}`, html, actions: [{ label: 'Cancel', value: null }, { label: 'Fill in only', value: ov => collect(ov, false) }, { label: 'Save to cabinet', cls: 'primary', value: ov => collect(ov, true) }], onOpen });
   if (!picked) return;
   const f2 = $('form[data-form=item]'); if (!f2) return;
   for (const { k, v } of picked.vals) {
