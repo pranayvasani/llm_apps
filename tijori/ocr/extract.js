@@ -51,13 +51,23 @@
 
   /* ---------- label lookup ---------- */
   // Find text that follows a label: same item after ':' -> next item on the line -> the line below.
+  function lev(a, b) {   // edit distance, for short labels the reader got slightly wrong ("Nare" for "Name")
+    const d = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+    for (let j = 1; j <= b.length; j++) d[0][j] = j;
+    for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    return d[a.length][b.length];
+  }
   function byLabel(ocr, labelRe, opts = {}) {
-    const { below = true, notRe = null, accept = v => !!v } = opts;
+    const { below = true, notRe = null, accept = v => !!v, fuzzy = null } = opts;
     const L = ocr.lines;
     for (let li = 0; li < L.length; li++) {
       const items = L[li].items && L[li].items.length ? L[li].items : [{ text: L[li].text }];
       for (let ii = 0; ii < items.length; ii++) {
-        const t = items[ii].text; const m = labelRe.exec(t);
+        const t = items[ii].text; let m = labelRe.exec(t);
+        if (!m && fuzzy) {   // whole item is a near-miss of a one-word label
+          const w = t.toLowerCase().replace(/[^a-z0-9]/g, '');
+          if (w.length >= 3 && Math.abs(w.length - fuzzy.length) <= 1 && lev(w, fuzzy) <= 1) m = { index: 0, 0: t };
+        }
         if (!m || (notRe && notRe.test(t))) continue;
         const rest = stripSep(t.slice(m.index + m[0].length));
         if (rest && accept(rest)) return rest;
@@ -188,7 +198,7 @@
   /* ---------- per-type extractors ---------- */
   const X = {
     pan(o, T) {
-      let name = textAfter(o, /^(name|नाम\s*\/\s*name)\b/i, { notRe: /father/i, accept: isNameLike });
+      let name = textAfter(o, /^(name|नाम\s*\/\s*name)\b/i, { notRe: /father/i, accept: isNameLike, fuzzy: 'name' });
       let father = textAfter(o, /father'?s\s*name/i, { accept: isNameLike });
       // fallback on the card's fixed layout: number, then holder's name, then father's name
       const num = panNumber(T);
@@ -233,7 +243,7 @@
       const rto = textAfter(o, /(issuing\s*authority|licensing\s*authority|\brto\b)/i, { accept: v => /[A-Za-z]{3}/.test(v) });
       const byLbl = idAfter(o, /(d\.?\s*l\.?\s*(no|number)|licen[cs]e\s*(no|number))/i, 10);
       const num = dlNumber(T) || (byLbl ? { value: byLbl.toUpperCase(), conf: 'medium' } : null);
-      return { number: num, name: textAfter(o, /^name\b/i, { accept: isNameLike }), classes: classes ? [...new Set(classes)].join(', ') : null, rto: rto ? rto.toUpperCase().replace(/^.*?(?=\b(RTO|DTO|ARTO))/, '').replace(/^(ARTO|RTO|DTO)(?=[A-Z])/, '$1 ') : null, issue, expiry };
+      return { number: num, name: textAfter(o, /^name\b/i, { accept: isNameLike, fuzzy: 'name' }), classes: classes ? [...new Set(classes)].join(', ') : null, rto: rto ? rto.toUpperCase().replace(/^.*?(?=\b(RTO|DTO|ARTO))/, '').replace(/^(ARTO|RTO|DTO)(?=[A-Z])/, '$1 ') : null, issue, expiry };
     },
     rc(o, T) {
       return { reg: vehicleReg(T), model: textAfter(o, /(maker'?s?\s*(name|class)?|model|make)/i, { accept: v => v.length > 2 }), owner: textAfter(o, /owner'?s?\s*name|owner/i, { accept: isNameLike }), chassis: (m => m ? { value: m[0], conf: 'high' } : idAfter(o, /chassis|vin/i, 10))(/\b[A-HJ-NPR-Z0-9]{17}\b/.exec(T.toUpperCase())), engine: idAfter(o, /engine/i, 5), regdate: dateAfter(o, /(reg(n|istration)?\.?\s*date|date\s*of\s*reg)/i), expiry: dateAfter(o, /(reg(n|istration)?\.?\s*(valid|upto)|valid\s*upto|fitness\s*upto)/i) };
