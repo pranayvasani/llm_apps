@@ -77,6 +77,7 @@ code{font-family:var(--mono);font-size:.92em;background:#ffffff14;padding:1px 5p
 .rawtext pre{white-space:pre-wrap;word-break:break-word;font:12.5px/1.45 var(--mono);color:#c9d0d8;background:#0f1114;border:1px solid #2f353d;border-radius:8px;padding:10px;max-height:30vh;overflow:auto;margin:6px 0 0}
 .savebar{position:sticky;bottom:calc(10px + env(safe-area-inset-bottom));z-index:5;margin:22px -8px 0;padding:10px;border-radius:14px;background:rgba(247,241,227,.94);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);box-shadow:0 -2px 0 rgba(0,0,0,.04),0 8px 24px rgba(0,0,0,.28)}
 .savebar .btn{flex:1 1 auto}
+.sg small.src{color:var(--muted)}
 .dot{position:absolute;top:9px;right:9px;width:9px;height:9px;border-radius:50%;background:var(--amber);box-shadow:0 0 0 2px #16191d}
 .banner .btn{flex:none}
 .modal .small{font-size:13px;color:var(--muted)}
@@ -751,7 +752,7 @@ function vItem(id) {
     ${it.notes ? `<h3 class="sec">Notes</h3><div class="notes">${esc(it.notes)}</div>` : ''}
     <h3 class="sec">Scans & files</h3>
     ${atts.length ? `<div class="atts">${atts.map(a => attHTML(a, false)).join('')}</div>
-      <div class="att-add"><button class="btn sm primary" data-act="share-atts" data-id="${esc(it.id)}">${icon('share')} Share ${atts.length > 1 ? `all ${atts.length} scans` : 'scan'}</button></div>`
+      <div class="att-add"><button class="btn sm primary" data-act="share-atts" data-id="${esc(it.id)}">${icon('share')} Share ${atts.length > 1 ? `all ${atts.length} scans` : 'scan'}</button>${atts.some(scannable) ? `<button class="btn sm" data-act="read-atts" data-id="${esc(it.id)}">${icon('camera')} Read details from ${atts.filter(scannable).length > 1 ? 'these files' : 'this file'}</button>` : ''}</div>`
       : `<p class="muted-p">No scans yet. <a href="#/edit/${esc(it.id)}">Add a photo or PDF</a>.</p>`}
     <div class="sheet-actions">
       ${di && di.days >= 0 ? `<button class="btn sm" data-act="ics" data-id="${esc(it.id)}">${icon('cal')} Remind me in my calendar</button>` : ''}
@@ -824,8 +825,8 @@ function vEditor(r) {
   return pageHead(back, `<span class="t">${dr.isNew ? 'New' : 'Edit'} ${esc(lcName(t.n))}</span>`) +
   `<div class="fo" style="--accent:${safeColor(d.color)}"><span class="ftab">${t.ic} ${esc(t.n)}</span>
    <form class="sheet form" data-form="item" autocomplete="off" novalidate>
-    <div class="scanbar"><div class="sb-t"><b>${icon('camera')} Scan to fill</b><small>Take a photo of the ${esc(lcName(t.n))}. It’s read on this phone, and you check every value before it’s filled in.</small></div>
-      <div class="btns"><label class="btn sm primary">${icon('camera')} Camera<input type="file" accept="image/*" capture="environment" data-change="scan" hidden></label><label class="btn sm">${icon('upload')} From photos<input type="file" accept="image/*" data-change="scan" hidden></label></div></div>
+    <div class="scanbar"><div class="sb-t"><b>${icon('camera')} Scan to fill</b><small>Photograph the ${esc(lcName(t.n))}, or pick several photos and PDFs at once (front and back, all pages). Everything is read on this phone, and you check every value before it’s filled in.</small></div>
+      <div class="btns"><label class="btn sm primary">${icon('camera')} Camera<input type="file" accept="image/*" capture="environment" data-change="scan" hidden></label><label class="btn sm">${icon('upload')} Photos or PDFs<input type="file" accept="image/*,application/pdf" multiple data-change="scan" hidden></label><span id="scan-atts">${scanAttsBtn(it)}</span></div></div>
     <div class="grid">
       <div class="fld"><label for="f-title">Label</label><input id="f-title" name="title" maxlength="80" value="${esc(it.title)}" placeholder="${esc(t.n)}" autocomplete="off"></div>
       <div class="fld"><label for="f-owner">Belongs to</label><input id="f-owner" name="owner" maxlength="40" value="${esc(it.owner)}" placeholder="Tap a choice below or type a name" autocomplete="off"><div class="ochips" id="ochips">${ownerChips(it.owner)}</div></div>
@@ -875,6 +876,10 @@ function rescueTitle(it) {   // returns true if it changed the item
   }
   if (t.fields.some(fd => isSecret(fd) && it.fields[fd.k] && idNorm(it.fields[fd.k]) === tn)) { it.title = defaultTitle(it); changed = true; }
   return changed;
+}
+function scanAttsBtn(it) {
+  const n = (it.attachments || []).filter(scannable).length;
+  return n ? `<button type="button" class="btn sm" data-act="scan-atts">${icon('clip')} Read attached (${n})</button>` : '';
 }
 function syncDraft(form) {
   const dr = S.draft; if (!dr || !form) return;
@@ -945,6 +950,7 @@ async function addFiles(files) {
     dr.added.add(id);
   }
   const z = $('#att-zone'); if (z) { z.innerHTML = attZone(dr); loadThumbs(z); }
+  const sb = $('#scan-atts'); if (sb) sb.innerHTML = scanAttsBtn(dr.item);
 }
 function autoWarranty(form) {
   const el = form.elements;
@@ -1051,6 +1057,7 @@ function render() {
   loadThumbs(app);
   const routeKey = r.join('/'); if (routeKey !== S.lastRoute) { window.scrollTo(0, 0); S.lastRoute = routeKey; }
   if (r[0] === 'search') { const q = $('#q'); q && q.focus(); }
+  if (r[0] === 'edit' && S.autoReadAtts === r[1]) { S.autoReadAtts = null; setTimeout(() => ACT['scan-atts'](), 50); }
   if (r[0] === 'settings') { fillStorage(); fillScanner(); }
 }
 
@@ -1132,37 +1139,90 @@ function progressPanel(title) {
   st.close = () => ov.remove();
   return st;
 }
-async function scanToFill(file) {
-  if (!S.draft) return;
-  if (!/^https?:$/.test(location.protocol)) return modal({ title: 'Scan to fill', html: '<p>Scanning works when Tijori is opened from its web address or installed on your phone. It doesn’t work from a downloaded file.</p>' });
+/* Sources for Scan to fill: newly picked files, or files already attached (decrypted on the fly). */
+const isPdf = (mime, name) => mime === 'application/pdf' || /\.pdf$/i.test(name || '');
+const scannable = a => (a.mime || '').startsWith('image/') || isPdf(a.mime, a.name);
+const fromFile = f => ({ name: f.name || 'photo.jpg', mime: f.type || (isPdf('', f.name) ? 'application/pdf' : 'image/jpeg'), bytes: async () => new Uint8Array(await f.arrayBuffer()), file: f });
+const fromAtt = a => ({ name: a.name, mime: a.mime, bytes: async () => { const rec = await blobGet(a.id); if (!rec) throw new Error(`${a.name} is missing`); return decryptBytes(S.key, rec); } });
+
+async function ensureReader(pp) {   // OCR engine: ask once, download once
   if (!S.vault.settings.ocrOk) {
-    const ok = await modal({ title: 'Turn on Scan to fill?', html: `<p>Tijori reads documents with a text-recognition engine that runs on this phone. It needs a one-time download of about ${Math.round(OCR_BYTES / 1e6)} MB from this app’s own site. After that it works offline.</p><p>Your photos are read on this device and are never uploaded.</p><p class="small">Use Wi-Fi if you can.</p>`, actions: [{ label: 'Not now', value: false }, { label: 'Download and scan', cls: 'primary', value: true }] });
-    if (!ok) return;
+    const ok = await modal({ title: 'Turn on Scan to fill?', html: `<p>Tijori reads photos and scanned pages with a text-recognition engine that runs on this phone. It needs a one-time download of about ${Math.round(OCR_BYTES / 1e6)} MB from this app’s own site. After that it works offline.</p><p>Your files are read on this device and are never uploaded.</p><p class="small">Use Wi-Fi if you can.</p>`, actions: [{ label: 'Not now', value: false }, { label: 'Download and scan', cls: 'primary', value: true }] });
+    if (!ok) { const e = new Error('Cancelled'); e.cancelled = true; throw e; }
   }
-  const type = S.draft.item.type; const key = S.draft.key;
-  const pp = progressPanel('Reading your document');
+  await ensureOCR(f => pp.set(f >= 1 ? 'Starting the reader…' : `Downloading the reader… ${Math.round(f * 100)}%`));
+  if (!S.vault.settings.ocrOk) { S.vault.settings.ocrOk = true; await saveVault(false); }
+}
+async function ensurePdfReader() {
+  if (!window.TijoriPDF) await loadScript(ocrBase() + 'pdf-read.js');
+  if (!window.TijoriExtract) await loadScript(ocrBase() + 'extract.js');
+}
+function askPdfPassword(name, wrong) {
+  return modal({ title: 'This PDF is password-protected',
+    html: `<p>${wrong ? '<b>That password didn’t work.</b> ' : ''}Enter the password for “${esc(name)}”. It’s used only to open the file on this phone.</p><p class="small">Insurance and bank PDFs often use your date of birth (like DDMMYYYY) or part of your PAN or name.</p><div class="mf"><input type="password" id="pdf-pw" autocomplete="off"></div>`,
+    actions: [{ label: 'Skip this file', value: null }, { label: 'Open', cls: 'primary', value: ov => ov.querySelector('#pdf-pw').value || undefined }] });
+}
+const RANK = { high: 3, medium: 2, low: 1 };
+function mergeExtracts(list) {   // per field, keep the most trustworthy reading across all files and pages
+  const out = { fields: {}, title: null };
+  for (const { ex, from } of list) {
+    if (!out.title && ex.title) out.title = ex.title;
+    for (const [k, v] of Object.entries(ex.fields)) {
+      const cur = out.fields[k];
+      if (!cur || (RANK[v.conf] || 0) > (RANK[cur.conf] || 0)) out.fields[k] = { ...v, from };
+    }
+  }
+  return out;
+}
+async function scanFiles(sources) {
+  if (!S.draft || !sources.length) return;
+  if (!/^https?:$/.test(location.protocol)) return modal({ title: 'Scan to fill', html: '<p>Scanning works when Tijori is opened from its web address or installed on your phone. It doesn’t work from a downloaded file.</p>' });
+  const type = S.draft.item.type, key = S.draft.key, n = sources.length;
+  const pp = progressPanel(n > 1 ? `Reading ${n} files` : 'Reading your document');
+  const keyField = T[type].key;
+  const judge = r => { const e = window.TijoriExtract.extract(type, r); const k = Object.keys(e.fields).length; return { score: k * 10 + (e.fields[keyField] ? 30 : 0), good: (!!e.fields[keyField] && k >= 2) || k >= 4 }; };
+  const found = [], texts = [], skipped = [];
+  const readImage = async (src, label, frac) => {
+    await ensureReader(pp);
+    let msg = `${label}Reading the text…`;
+    const best = await window.TijoriOCR.recognizeBest(src, judge, { maxSide: 1280,
+      onRetry: () => { msg = `${label}Looks sideways or upside down, turning it…`; },
+      onProgress: f => pp.set(msg, frac(f)) });
+    return best.res;
+  };
   try {
-    await ensureOCR(f => pp.set(f >= 1 ? 'Starting the reader…' : `Downloading the reader… ${Math.round(f * 100)}%`, f * 0.4));
-    if (pp.cancelled) return;
-    if (!S.vault.settings.ocrOk) { S.vault.settings.ocrOk = true; await saveVault(false); }
-    pp.set('Finding the text…', 0.45);
-    const bmp = await createImageBitmap(file);
-    const keyField = T[type].key;
-    const judge = r => { const e = window.TijoriExtract.extract(type, r); const n = Object.keys(e.fields).length; return { score: n * 10 + (e.fields[keyField] ? 30 : 0), good: (!!e.fields[keyField] && n >= 2) || n >= 4 }; };
-    let msg = 'Reading the text…';
-    const best = await window.TijoriOCR.recognizeBest(bmp, judge, { maxSide: 1280,
-      onRetry: () => { msg = 'Photo looks sideways or upside down, turning it…'; },
-      onProgress: f => pp.set(msg, 0.5 + f * 0.5) });
-    bmp.close && bmp.close();
+    for (let i = 0; i < n && !pp.cancelled; i++) {
+      const s = sources[i]; const label = n > 1 ? `File ${i + 1} of ${n}: ` : '';
+      const frac = f => (i + f) / n;
+      pp.set(`${label}Opening ${s.name}…`, frac(0));
+      if (isPdf(s.mime, s.name)) {
+        await ensurePdfReader();
+        let doc;
+        try { doc = await window.TijoriPDF.open(await s.bytes(), ocrBase(), wrong => askPdfPassword(s.name, wrong)); }
+        catch (e) { if (e.cancelled) { skipped.push(`${s.name} (no password)`); continue; } throw e; }
+        for await (const pg of window.TijoriPDF.pages(doc)) {
+          if (pp.cancelled) break;
+          const where = doc.numPages > 1 ? `${s.name}, page ${pg.page}` : s.name;
+          const res = pg.kind === 'text' ? pg.ocr : await readImage(pg.canvas, `${label}Page ${pg.page}: `, f => frac((pg.page - 1 + f) / Math.min(doc.numPages, 8)));
+          found.push({ ex: window.TijoriExtract.extract(type, res), from: where }); texts.push({ where, res });
+        }
+        await window.TijoriPDF.close(doc);
+      } else if ((s.mime || '').startsWith('image/')) {
+        const bmp = await createImageBitmap(new Blob([await s.bytes()], { type: s.mime }));
+        const res = await readImage(bmp, label, frac);
+        bmp.close && bmp.close();
+        found.push({ ex: window.TijoriExtract.extract(type, res), from: s.name }); texts.push({ where: s.name, res });
+      } else skipped.push(`${s.name} (not a photo or PDF)`);
+    }
     if (pp.cancelled || !S.draft || S.draft.key !== key) return;
     pp.close();
-    await reviewScan(window.TijoriExtract.extract(type, best.res), file, best.res);
+    await reviewScan(mergeExtracts(found), sources.filter(s => s.file).map(s => s.file), texts, { sources: n, skipped });
   } catch (e) {
     console.error(e); pp.close();
-    if (!pp.cancelled) modal({ title: 'Couldn’t scan', html: `<p>${esc(e.message || 'Something went wrong while reading the photo.')}</p>` });
+    if (!pp.cancelled && !e.cancelled) modal({ title: 'Couldn’t scan', html: `<p>${esc(e.message || 'Something went wrong while reading the file.')}</p>` });
   }
 }
-async function reviewScan(ex, file, res) {
+async function reviewScan(ex, newFiles, texts, { sources = 1, skipped = [] } = {}) {
   const form = $('form[data-form=item]'); if (!form || !S.draft) return; syncDraft(form);
   const it = S.draft.item, t = T[it.type];
   const rows = [];
@@ -1172,23 +1232,26 @@ async function reviewScan(ex, file, res) {
     const v = fd.t === 'card' ? groupCard(sug.value) : sug.value;
     const cur = String(it.fields[fd.k] || '').trim();
     const same = cur && cur.replace(/\s/g, '').toUpperCase() === String(v).replace(/\s/g, '').toUpperCase();
-    if (!same) rows.push({ k: fd.k, l: fd.l, v, cur, conf: sug.conf, fd });
+    if (!same) rows.push({ k: fd.k, l: fd.l, v, cur, conf: sug.conf, fd, from: sug.from });
   }
-  const rawText = res.lines.map(l => l.items.map(i => i.text).join('   ')).join('\n');
-  const attach = `<label class="sg-attach"><input type="checkbox" id="sg-att" checked> Also attach this photo to the document</label>` +
-    (rawText ? `<details class="rawtext"><summary>Show the text it read</summary><pre>${esc(rawText)}</pre></details>` : '');
+  const rawText = texts.map(x => (texts.length > 1 ? `── ${x.where} ──\n` : '') + x.res.lines.map(l => l.items.map(i => i.text).join('   ')).join('\n')).join('\n\n');
+  const nf = newFiles.length;
+  const attach = (nf ? `<label class="sg-attach"><input type="checkbox" id="sg-att" checked> Also attach ${nf === 1 ? 'this file' : `these ${nf} files`} to the document</label>` : '') +
+    (skipped.length ? `<p class="small">Skipped: ${esc(skipped.join(', '))}</p>` : '') +
+    (rawText.trim() ? `<details class="rawtext"><summary>Show the text it read</summary><pre>${esc(rawText)}</pre></details>` : '');
+  const wantAttach = ov => { const c = ov.querySelector('#sg-att'); return !!(c && c.checked); };
   if (!rows.length) {
-    const lines = res.lines.length;
+    const lines = texts.reduce((a, x) => a + x.res.lines.length, 0);
     const r = await modal({ title: lines ? 'No new details found' : 'Couldn’t read any text', html: `<p>${lines ? `Read ${lines} line${lines > 1 ? 's' : ''} of text, but nothing matched the fields for a ${esc(lcName(t.n))}${Object.keys(ex.fields).length ? ' that you haven’t already filled' : ''}.` : 'Try again with the document filling the frame, in good light and without glare.'}</p>${attach}`,
-      actions: [{ label: 'Close', value: null, cls: 'primary', }].map(a => ({ ...a, value: ov => ({ att: ov.querySelector('#sg-att').checked }) })) });
-    if (r && r.att) await addFiles([file]);
+      actions: [{ label: 'Close', cls: 'primary', value: ov => ({ att: wantAttach(ov) }) }] });
+    if (r && r.att) await addFiles(newFiles);
     return;
   }
   const inputFor = r => r.fd.t === 'date' ? `<input class="sg-v" type="date" data-k="${r.k}" value="${esc(r.v)}">` : `<input class="sg-v ${isMono(r.fd) ? 'mono' : ''}" type="text" data-k="${r.k}" value="${esc(r.v)}" autocomplete="off" spellcheck="false">`;
-  const html = `<p class="small">Found ${rows.length} detail${rows.length > 1 ? 's' : ''}. Untick anything wrong, or correct it here.</p><div class="sg-list">${rows.map(r => `<label class="sg"><input type="checkbox" data-c="${r.k}" ${r.conf === 'low' || (r.cur && r.cur !== r.v) ? '' : 'checked'}><span class="sg-l">${esc(r.l)}${r.conf === 'low' ? '<em>please check</em>' : ''}</span>${inputFor(r)}${r.cur ? `<small>Will replace “${esc(r.cur)}”</small>` : ''}</label>`).join('')}</div>${attach}`;
+  const html = `<p class="small">Found ${rows.length} detail${rows.length > 1 ? 's' : ''}${sources > 1 ? ` across ${sources} files` : ''}. Untick anything wrong, or correct it here.</p><div class="sg-list">${rows.map(r => `<label class="sg"><input type="checkbox" data-c="${r.k}" ${r.conf === 'low' || (r.cur && r.cur !== r.v) ? '' : 'checked'}><span class="sg-l">${esc(r.l)}${r.conf === 'low' ? '<em>please check</em>' : ''}</span>${inputFor(r)}${r.cur ? `<small>Will replace “${esc(r.cur)}”</small>` : ''}${sources > 1 && r.from ? `<small class="src">from ${esc(r.from)}</small>` : ''}</label>`).join('')}</div>${attach}`;
   const collect = (ov, save) => ({ save,
     vals: [...ov.querySelectorAll('[data-c]')].filter(c => c.checked).map(c => ({ k: c.dataset.c, v: ov.querySelector(`.sg-v[data-k="${c.dataset.c}"]`).value.trim() })).filter(x => x.v),
-    att: ov.querySelector('#sg-att').checked });
+    att: wantAttach(ov) });
   const picked = await modal({ title: `Scanned ${lcName(t.n)}`, html, actions: [{ label: 'Cancel', value: null }, { label: 'Fill in only', value: ov => collect(ov, false) }, { label: 'Save to cabinet', cls: 'primary', value: ov => collect(ov, true) }] });
   if (!picked) return;
   const f2 = $('form[data-form=item]'); if (!f2) return;
@@ -1201,7 +1264,7 @@ async function reviewScan(ex, file, res) {
   }
   if (it.type === 'warranty' && !picked.vals.some(x => x.k === 'expiry')) autoWarranty(f2);
   syncDraft(f2);
-  if (picked.att) await addFiles([file]);
+  if (picked.att && nf) await addFiles(newFiles);
   if (picked.save) { await saveDraft($('form[data-form=item]')); return; }
   if (picked.vals.length) toast(`Filled ${picked.vals.length} field${picked.vals.length > 1 ? 's' : ''}. Tap Save to cabinet when you’re done.`);
 }
@@ -1232,6 +1295,7 @@ const ACT = {
     dr.item.attachments = dr.item.attachments.filter(a => a.id !== id);
     if (dr.added.has(id)) { dr.added.delete(id); delAtt(id); }
     const z = $('#att-zone'); z.innerHTML = attZone(dr); loadThumbs(z);
+    const sb = $('#scan-atts'); if (sb) sb.innerHTML = scanAttsBtn(dr.item);
   },
   'del-item': async el => {
     const it = itemById(el.dataset.id); const n = (it.attachments || []).length;
@@ -1257,6 +1321,12 @@ const ACT = {
     if (!await confirmM('Remove drawer?', `“${d.name}” is empty and will be removed.`, 'Remove', true)) return;
     S.vault.drawers = S.vault.drawers.filter(x => x.id !== d.id); await saveVault(); render();
   },
+  'scan-atts': async () => {
+    if (!S.draft) return; syncDraft($('form[data-form=item]'));
+    const atts = S.draft.item.attachments.filter(scannable);
+    if (atts.length) await scanFiles(atts.map(fromAtt));
+  },
+  'read-atts': el => { S.autoReadAtts = el.dataset.id; location.hash = '#/edit/' + el.dataset.id; },
   'pick-owner': el => {
     const inp = $('#f-owner'); if (!inp) return;
     const same = inp.value.trim().toLowerCase() === el.dataset.o.toLowerCase();
@@ -1378,7 +1448,7 @@ document.addEventListener('change', async e => {
   const el = e.target, c = el.dataset && el.dataset.change; if (!c) return;
   try {
     if (c === 'att') { const files = [...el.files]; el.value = ''; await addFiles(files); }
-    else if (c === 'scan') { const file = el.files[0]; el.value = ''; if (file) await scanToFill(file); }
+    else if (c === 'scan') { const files = [...el.files]; el.value = ''; if (files.length) await scanFiles(files.map(fromFile)); }
     else if (c === 'import') { const file = el.files[0]; el.value = ''; if (file) await importBackup(file); }
     else if (c === 'move') { const it = itemById(el.dataset.id); it.drawerId = el.value; it.updated = Date.now(); await saveVault(); const d = drawerById(el.value); render(); toast(`Moved to ${d.name}`); }
     else if (c === 'autolock') { S.vault.settings.autoLock = +el.value; await saveVault(false); toast(`Locks after ${el.value} min idle`); }

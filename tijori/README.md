@@ -25,14 +25,24 @@ device, go to Settings → Import there. Importing merges the two cabinets, and 
 each document wins.
 
 ## Scan to fill
-When adding a document, tap **Camera** or **From photos** in the "Scan to fill" box. Tijori reads the
+When adding a document, tap **Camera**, or **Photos or PDFs** to pick several files at once (front
+and back of a card, every page of a policy). **Read attached** reads files already attached to the
+document, and the document view has **Read details from these files**. Values are taken from
+whichever file read each field most reliably, and the review shows which file each came from.
+
+Digital PDFs (most e-policies and invoices) are read from their text layer, which is exact and needs
+no OCR. Scanned PDF pages go through the photo reader. Password-protected PDFs ask for the password,
+which is used only to open the file on the phone.
+
+In the "Scan to fill" box: Tijori reads the
 photo **on the phone** using PaddleOCR (PP-OCRv5 mobile) running in ONNX Runtime Web, then picks out
 the fields with format rules and check digits. Those include PAN format, the Aadhaar check digit, the
 card-number check digit, IFSC, DL and vehicle registration formats, and dates next to labels like
 "Valid till". You confirm or edit every value before it's filled in. Values that fail a check digit
 are left unticked and marked "please check".
 
-- The first scan downloads the engine and models (about 36 MB) from this app's own `ocr/` folder.
+- The first photo scan downloads the engine and models (about 36 MB). The first PDF downloads
+  the PDF reader (about 2 MB). Both come from this app's own `ocr/` folder.
   After that, scanning works offline. Settings → Scan to fill can remove the download.
 - Photos are never uploaded. The page's security policy only allows network reads from `ocr/`,
   so the app can't send anything anywhere.
