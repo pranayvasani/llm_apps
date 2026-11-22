@@ -59,7 +59,7 @@
     return d[a.length][b.length];
   }
   function byLabel(ocr, labelRe, opts = {}) {
-    const { below = true, notRe = null, accept = v => !!v, fuzzy = null } = opts;
+    const { below = true, notRe = null, accept = v => !!v, fuzzy = null, squash = null } = opts;
     const L = ocr.lines;
     for (let li = 0; li < L.length; li++) {
       const items = L[li].items && L[li].items.length ? L[li].items : [{ text: L[li].text }];
@@ -69,6 +69,7 @@
           const w = t.toLowerCase().replace(/[^a-z0-9]/g, '');
           if (w.length >= 3 && Math.abs(w.length - fuzzy.length) <= 1 && lev(w, fuzzy) <= 1) m = { index: 0, 0: t };
         }
+        if (!m && squash && squash.test(t.toLowerCase().replace(/[^a-z]/g, ''))) m = { index: t.length, 0: '' };   // whole item is a mangled label
         if (!m || (notRe && notRe.test(t))) continue;
         const rest = stripSep(t.slice(m.index + m[0].length));
         if (rest && accept(rest)) return rest;
@@ -191,16 +192,32 @@
   const textAfter = (ocr, re, opts) => byLabel(ocr, re, opts);
   const idAfter = (ocr, re, minLen = 4) => { const v = byLabel(ocr, re, { accept: x => /[0-9]/.test(x) && x.replace(/[^A-Za-z0-9]/g, '').length >= minLen }); return v ? v.replace(/^(no|number|num|#)\.?\s*[:\-]?\s*/i, '').split(/\s{2,}| (?=[A-Za-z]+\s*:)/)[0].replace(/[ ,;]+$/, '') : null; };
 
-  function mrz(text) {   // passport machine-readable zone
-    const lines = text.toUpperCase().replace(/ /g, '').split('\n').filter(l => /^[A-Z0-9<]{40,46}$/.test(l));
-    const l1 = lines.find(l => l.startsWith('P')), l2 = lines.find(l => /^[A-Z0-9<]{9}\d[A-Z<]{3}\d{6}\d[MFX<]\d{6}/.test(l));
-    if (!l2) return null;
+  function icao(s) { const w = [7, 3, 1]; let t = 0; for (let i = 0; i < s.length; i++) { const c = s[i]; t += (c === '<' ? 0 : /\d/.test(c) ? +c : c.charCodeAt(0) - 55) * w[i % 3]; } return String(t % 10); }
+  function mrz(text, ocr) {   // passport machine-readable zone (the two lines full of <<<)
+    const raw = ocr ? ocr.lines.map(l => (l.items && l.items.length ? l.items.map(i => i.text).join('') : l.text)) : text.split('\n');
+    const lines = raw.map(l => l.toUpperCase().replace(/\s/g, '').replace(/[«‹(\[{]/g, '<')).filter(l => (l.match(/</g) || []).length >= 3 && l.length >= 28);
+    let p2 = null, l2 = null;
+    for (const l of lines) {
+      const dob = l.slice(13, 19).split('').map(toDigit).join(''), exp = l.slice(21, 27).split('').map(toDigit).join('');
+      const nat = l.slice(10, 13).split('').map(toLetter).join('');
+      if (!/^\d{6}$/.test(dob) || !/^\d{6}$/.test(exp) || !/^[A-Z<]{3}$/.test(nat)) continue;
+      let num = l.slice(0, 9).replace(/<+$/, '');
+      if (/^[A-Z0-9OILSZB]\d{7}$/.test(num.slice(0, 1) + num.slice(1).split('').map(toDigit).join(''))) num = toLetter(num[0]) + num.slice(1).split('').map(toDigit).join('');
+      const ok = icao(dob) === toDigit(l[19]) && icao(exp) === toDigit(l[27]);
+      p2 = { num, numOk: icao(l.slice(0, 9).replace(/O/g, '0')) === toDigit(l[9]) || icao(num.padEnd(9, '<')) === toDigit(l[9]), dob, exp, ok, nat }; l2 = l; break;
+    }
+    if (!p2) return null;
     const yy = (s, future) => { const y = +s.slice(0, 2); const full = future ? 2000 + y : (y > (new Date().getFullYear() % 100) ? 1900 + y : 2000 + y); return `${full}-${s.slice(2, 4)}-${s.slice(4, 6)}`; };
-    const out = { number: l2.slice(0, 9).replace(/</g, ''), dob: yy(l2.slice(13, 19), false), expiry: yy(l2.slice(21, 27), true) };
-    if (l1) { const nm = l1.slice(5).split('<<'); out.name = clean(((nm[1] || '').replace(/</g, ' ') + ' ' + (nm[0] || '').replace(/</g, ' '))); }
+    const out = { number: p2.num, numOk: p2.numOk, dob: yy(p2.dob, false), expiry: yy(p2.exp, true), ok: p2.ok };
+    const l1 = lines.find(l => l !== l2 && /^P[A-Z0-9<]/.test(l) && l.slice(5).includes('<<'));
+    if (l1) {
+      const nm = l1.slice(5).split('').map(c => (c === '<' ? c : toLetter(c))).join('').split('<<').filter(Boolean);
+      const sur = (nm[0] || '').replace(/</g, ' ').trim(), giv = (nm[1] || '').replace(/</g, ' ').trim();
+      if (sur || giv) out.name = clean(`${giv} ${sur}`);
+    }
     return out;
   }
-
+  const CITY = /^[A-Z][A-Z .,'\-]{2,30}$/;
   /* ---------- per-type extractors ---------- */
   const X = {
     pan(o, T) {
@@ -229,9 +246,23 @@
       return { number: aadhaarNumber(T), name, dob: dateAfter(o, /(dob|date\s*of\s*birth)/i) || firstDate(T), mobile: phoneAfter(o, /mobile|mob\.?/i) };
     },
     passport(o, T) {
-      const z = mrz(T);
-      const num = z ? { value: z.number, conf: 'high' } : (m => m ? { value: m[0], conf: 'medium' } : null)(/\b[A-Z][0-9]{7}\b/.exec(T.toUpperCase()));
-      return { number: num, name: z && z.name ? z.name : textAfter(o, /given\s*name/i, { accept: isNameLike }), fileno: idAfter(o, /file\s*no/i), place: textAfter(o, /place\s*of\s*issue/i, { accept: v => /^[A-Za-z .]{3,30}$/.test(v) }), issue: dateAfter(o, /date\s*of\s*issue/i), expiry: (z && z.expiry) || dateAfter(o, /date\s*of\s*expiry/i) };
+      const z = mrz(T, o);
+      const num = z && z.number ? { value: z.number, conf: z.numOk ? 'high' : 'medium' } : (m => m ? { value: m[0], conf: 'medium' } : null)(/\b[A-Z][0-9]{7}\b/.exec(T.toUpperCase()));
+      const expiry = (z && z.ok && z.expiry) || dateAfter(o, /date\s*of\s*expiry/i, { squash: /dateofexp/ }) || (z && z.expiry) || null;
+      const dob = z && z.dob;
+      // date of issue: labelled, else the other date on the same row as the expiry date
+      let issue = dateAfter(o, /date\s*of\s*[il1|]?ss?ue/i, { squash: /dateof[il1]?ss?ue/ });
+      const L = o.lines; const expIso = expiry;
+      let row = -1;
+      if (expIso) row = L.findIndex(l => dates(l.text).some(d => d.iso === expIso));
+      if (!issue && row >= 0) { const c = dates(L[row].text).map(d => d.iso).filter(d => d !== expIso && d !== dob && d < expIso); if (c.length) issue = c[0]; }
+      if (issue && expIso && issue >= expIso) issue = null;
+      // place of issue: labelled, else the capital-letters line just above that date row
+      let place = textAfter(o, /pl?ace\s*of\s*[il1|]?ss?ue/i, { squash: /(pl)?aceof[il1]?ss?u/, accept: v => CITY.test(v.toUpperCase()) && !/\d/.test(v) });
+      if (!place && row > 0) for (let k = row - 1; k >= Math.max(0, row - 3); k--) { const t = clean(L[k].text); if (CITY.test(t) && !/(INDIA|REPUBLIC|PASSPORT|NATIONALITY)/.test(t) && !/,/.test(t)) { place = t; break; } }
+      let name = z && z.name ? z.name : null;
+      if (!name) { const g = textAfter(o, /given\s*name/i, { squash: /givenname/, accept: isNameLike }), sn = textAfter(o, /surname/i, { squash: /su[rn]n?ame/, accept: isNameLike }); name = [g, sn].filter(Boolean).join(' ') || null; }
+      return { number: num, name, fileno: idAfter(o, /file\s*no/i), place: place ? place.toUpperCase() : null, issue, expiry };
     },
     voter(o, T) {
       const m = /\b([A-Z]{3})(\d{7})\b/.exec(T.toUpperCase().replace(/[^\S\n]+/g, ''));
@@ -242,7 +273,7 @@
       const cov = textAfter(o, /(cov|class(es)?\s*of\s*vehicle|vehicle\s*class|authori[sz]ation\s*to\s*drive)/i, { accept: v => /\b(LMV|MCWG|MCWOG|HMV|HGMV|HPMV|MGV|TRANS|LMV-?NT|INVCRG|e-?RICKSHAW|MC\s?50CC|3W)\b/i.test(v) });
       // classes are often listed one per line under the label, so collect them from the whole card
       const classes = ((cov || '') + '\n' + T).toUpperCase().match(/\b(LMV-?NT|LMV-?TR|LMV|MCWG|MCWOG|HMV|HGMV|HPMV|MGV|TRANS|INVCRG|E-?RICKSHAW|MC\s?50CC)\b/g);
-      let issue = dateAfter(o, /(date\s*of\s*first\s*issue|first\s*issue|date\s*of\s*issue|issue\s*date|issued\s*on|\bdoi\b)/i);
+      let issue = dateAfter(o, /(date\s*of\s*first\s*[il1|]?ssue|first\s*[il1|]?ssue|date\s*of\s*[il1|]?ssue|[il1|]?ssue\s*date|issued\s*on|\bdoi\b)/i);
       let expiry = dateAfter(o, /(valid(ity)?\s*\(?\s*n\.?\s*t\b|non[\s-]*transport|valid\s*till|valid\s*up\s*to|valid\s*upto|validity|\bvalid\b)/i);
       const ds = [...new Set(dates(T).map(d => d.iso))].sort();
       if (!expiry && ds.length >= 2) expiry = ds[ds.length - 1];
