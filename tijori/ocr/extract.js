@@ -70,7 +70,7 @@
           if (w.length >= 3 && Math.abs(w.length - fuzzy.length) <= 1 && lev(w, fuzzy) <= 1) m = { index: 0, 0: t };
         }
         if (!m && squash && squash.test(t.toLowerCase().replace(/[^a-z]/g, ''))) m = { index: t.length, 0: '' };   // whole item is a mangled label
-        if (!m || (notRe && notRe.test(t))) continue;
+        if (!m || (notRe && (notRe.test(t) || notRe.test(t.toLowerCase().replace(/[^a-z]/g, ''))))) continue;
         const rest = stripSep(t.slice(m.index + m[0].length));
         if (rest && accept(rest)) return rest;
         // "Plan | Policy Start | Policy Expiry" with values underneath: the neighbours are labels too, not values
@@ -247,22 +247,25 @@
     },
     passport(o, T) {
       const z = mrz(T, o);
-      const num = z && z.number ? { value: z.number, conf: z.numOk ? 'high' : 'medium' } : (m => m ? { value: m[0], conf: 'medium' } : null)(/\b[A-Z][0-9]{7}\b/.exec(T.toUpperCase()));
+      // number: from the machine-readable lines, else only next to a "Passport No." label. Never the "Old Passport No." on the last page.
+      const OLD = /\bold\b|oldpas/i;
+      const numLbl = byLabel(o, /pass?port\s*n[o0]/i, { notRe: OLD, accept: v => /\b[A-Z][0-9]{7}\b/.test(v.toUpperCase()) });
+      const num = z && z.number ? { value: z.number, conf: z.numOk ? 'high' : 'medium' } : numLbl ? { value: /\b[A-Z][0-9]{7}\b/.exec(numLbl.toUpperCase())[0], conf: 'medium' } : null;
       const expiry = (z && z.ok && z.expiry) || dateAfter(o, /date\s*of\s*expiry/i, { squash: /dateofexp/ }) || (z && z.expiry) || null;
       const dob = z && z.dob;
       // date of issue: labelled, else the other date on the same row as the expiry date
-      let issue = dateAfter(o, /date\s*of\s*[il1|]?ss?ue/i, { squash: /dateof[il1]?ss?ue/ });
+      let issue = dateAfter(o, /date\s*of\s*[il1|]?ss?ue/i, { squash: /dateof[il1]?ss?ue/, notRe: OLD });
       const L = o.lines; const expIso = expiry;
       let row = -1;
       if (expIso) row = L.findIndex(l => dates(l.text).some(d => d.iso === expIso));
       if (!issue && row >= 0) { const c = dates(L[row].text).map(d => d.iso).filter(d => d !== expIso && d !== dob && d < expIso); if (c.length) issue = c[0]; }
       if (issue && expIso && issue >= expIso) issue = null;
       // place of issue: labelled, else the capital-letters line just above that date row
-      let place = textAfter(o, /pl?ace\s*of\s*[il1|]?ss?ue/i, { squash: /(pl)?aceof[il1]?ss?u/, accept: v => CITY.test(v.toUpperCase()) && !/\d/.test(v) });
+      let place = textAfter(o, /pl?ace\s*of\s*[il1|]?ss?ue/i, { squash: /(pl)?aceof[il1]?ss?u/, notRe: OLD, accept: v => CITY.test(v.toUpperCase()) && !/\d/.test(v) });
       if (!place && row > 0) for (let k = row - 1; k >= Math.max(0, row - 3); k--) { const t = clean(L[k].text); if (CITY.test(t) && !/(INDIA|REPUBLIC|PASSPORT|NATIONALITY)/.test(t) && !/,/.test(t)) { place = t; break; } }
       let name = z && z.name ? z.name : null;
       if (!name) { const g = textAfter(o, /given\s*name/i, { squash: /givenname/, accept: isNameLike }), sn = textAfter(o, /surname/i, { squash: /su[rn]n?ame/, accept: isNameLike }); name = [g, sn].filter(Boolean).join(' ') || null; }
-      return { number: num, name, fileno: idAfter(o, /file\s*no/i), place: place ? place.toUpperCase() : null, issue, expiry };
+      return { number: num, name, fileno: byLabel(o, /\bfi[l1i]?e\s*n[o0]/i, { squash: /fi[l1i]?en[o0]/, accept: v => /^[A-Z]{2}\d{6,}/i.test(v.replace(/[\s.:]/g, '')) }), place: place ? place.toUpperCase() : null, issue, expiry };
     },
     voter(o, T) {
       const m = /\b([A-Z]{3})(\d{7})\b/.exec(T.toUpperCase().replace(/[^\S\n]+/g, ''));
