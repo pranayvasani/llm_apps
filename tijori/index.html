@@ -362,11 +362,11 @@ const CAB_SVG = `<svg viewBox="0 0 120 140" xmlns="http://www.w3.org/2000/svg" a
 const f = (k, l, t = 'text', x = {}) => ({ k, l, t, ...x });
 const T = {
   aadhaar: { n: 'Aadhaar', ic: '🆔', key: 'number', fields: [f('number', 'Aadhaar number', 'secret', { p: 'XXXX XXXX XXXX' }), f('name', 'Name on card'), f('dob', 'Date of birth', 'date'), f('mobile', 'Linked mobile', 'tel'), f('address', 'Address', 'textarea')] },
-  pan: { n: 'PAN card', ic: '🪪', key: 'number', fields: [f('number', 'PAN', 'text', { up: 1, mono: 1, p: 'ABCDE1234F' }), f('name', 'Name'), f('father', 'Father’s name'), f('dob', 'Date of birth', 'date')] },
-  passport: { n: 'Passport', ic: '📘', key: 'number', exp: 'expiry', due: 'Expires', fields: [f('number', 'Passport number', 'text', { up: 1, mono: 1 }), f('name', 'Name'), f('fileno', 'File number', 'text', { up: 1, mono: 1 }), f('place', 'Place of issue'), f('issue', 'Date of issue', 'date'), f('expiry', 'Date of expiry', 'date')] },
-  voter: { n: 'Voter ID', ic: '🗳️', key: 'number', fields: [f('number', 'EPIC number', 'text', { up: 1, mono: 1 }), f('name', 'Name'), f('constituency', 'Constituency'), f('part', 'Part / serial no.')] },
-  id_other: { n: 'Other ID', ic: '🪪', key: 'number', exp: 'expiry', due: 'Expires', fields: [f('number', 'ID number', 'text', { mono: 1 }), f('issuer', 'Issued by'), f('name', 'Name'), f('expiry', 'Valid until', 'date')] },
-  dl: { n: 'Driving licence', ic: '🚘', key: 'number', exp: 'expiry', due: 'Expires', fields: [f('number', 'DL number', 'text', { up: 1, mono: 1, p: 'MH12 20190012345' }), f('name', 'Name'), f('classes', 'Vehicle classes', 'text', { up: 1, p: 'LMV, MCWG' }), f('rto', 'Issuing RTO'), f('issue', 'Date of issue', 'date'), f('expiry', 'Valid till', 'date')] },
+  pan: { n: 'PAN card', ic: '🪪', key: 'number', fields: [f('number', 'PAN', 'text', { up: 1, mono: 1, hide: 1, p: 'ABCDE1234F' }), f('name', 'Name'), f('father', 'Father’s name'), f('dob', 'Date of birth', 'date')] },
+  passport: { n: 'Passport', ic: '📘', key: 'number', exp: 'expiry', due: 'Expires', fields: [f('number', 'Passport number', 'text', { up: 1, mono: 1, hide: 1 }), f('name', 'Name'), f('fileno', 'File number', 'text', { up: 1, mono: 1, hide: 1 }), f('place', 'Place of issue'), f('issue', 'Date of issue', 'date'), f('expiry', 'Date of expiry', 'date')] },
+  voter: { n: 'Voter ID', ic: '🗳️', key: 'number', fields: [f('number', 'EPIC number', 'text', { up: 1, mono: 1, hide: 1 }), f('name', 'Name'), f('constituency', 'Constituency'), f('part', 'Part / serial no.')] },
+  id_other: { n: 'Other ID', ic: '🪪', key: 'number', exp: 'expiry', due: 'Expires', fields: [f('number', 'ID number', 'text', { mono: 1, hide: 1 }), f('issuer', 'Issued by'), f('name', 'Name'), f('expiry', 'Valid until', 'date')] },
+  dl: { n: 'Driving licence', ic: '🚘', key: 'number', exp: 'expiry', due: 'Expires', fields: [f('number', 'DL number', 'text', { up: 1, mono: 1, hide: 1, p: 'MH12 20190012345' }), f('name', 'Name'), f('classes', 'Vehicle classes', 'text', { up: 1, p: 'LMV, MCWG' }), f('rto', 'Issuing RTO'), f('issue', 'Date of issue', 'date'), f('expiry', 'Valid till', 'date')] },
   rc: { n: 'Vehicle RC', ic: '🚗', key: 'reg', exp: 'expiry', due: 'Registration ends', past: 'Registration ended', fields: [f('reg', 'Registration number', 'text', { up: 1, mono: 1, p: 'MH 12 AB 1234' }), f('model', 'Make & model'), f('owner', 'Registered owner'), f('chassis', 'Chassis number', 'text', { up: 1, mono: 1 }), f('engine', 'Engine number', 'text', { up: 1, mono: 1 }), f('regdate', 'Registration date', 'date'), f('expiry', 'Registration valid till', 'date')] },
   motor_ins: { n: 'Vehicle insurance', ic: '🛡️', key: 'policy', exp: 'expiry', due: 'Renewal', past: 'Renewal overdue since', fields: [f('insurer', 'Insurer'), f('policy', 'Policy number', 'text', { mono: 1 }), f('reg', 'Vehicle reg. number', 'text', { up: 1, mono: 1 }), f('kind', 'Cover type', 'text', { p: 'Comprehensive / Third-party' }), f('idv', 'IDV (₹)'), f('premium', 'Premium (₹)'), f('ncb', 'NCB %'), f('claim', 'Claims helpline', 'tel'), f('expiry', 'Policy expiry', 'date')] },
   puc: { n: 'PUC certificate', ic: '💨', key: 'cert', exp: 'expiry', due: 'Expires', fields: [f('cert', 'Certificate number', 'text', { mono: 1 }), f('reg', 'Vehicle reg. number', 'text', { up: 1, mono: 1 }), f('expiry', 'Valid till', 'date')] },
@@ -503,7 +503,7 @@ const drawerById = id => S.vault.drawers.find(d => d.id === id);
 const itemById = id => S.vault.items.find(i => i.id === id);
 function drawerTypes(d) { const def = DEFAULT_DRAWERS.find(x => x.id === d.id); return def ? [...def.types, 'note'] : Object.keys(T); }
 const lcName = n => /^Aadhaar/.test(n) ? n : n.replace(/^([A-Z])(?=[a-z])/, c => c.toLowerCase());
-const isSecret = fd => fd && (fd.t === 'secret' || fd.t === 'card');
+const isSecret = fd => fd && (fd.t === 'secret' || fd.t === 'card' || !!fd.hide);
 const isMono = fd => fd && (fd.mono || fd.t === 'card' || fd.t === 'secret' || fd.t === 'mmyy');
 function groupCard(v) { return String(v).replace(/\D/g, '').replace(/(.{4})/g, '$1 ').trim(); }
 function mask(v, fd) {
@@ -648,6 +648,8 @@ async function onUnlock(form) {
     let vault; try { vault = JSON.parse(dec.decode(await decryptBytes(key, rec))); } catch { throw new Error('That passphrase didn’t open the cabinet.'); }
     vault.deleted = vault.deleted || {}; vault.settings = vault.settings || { autoLock: 5 };
     S.key = key; S.meta = meta; S.vault = vault; S.last = Date.now();
+    let rescued = 0; for (const it of vault.items) if (rescueTitle(it)) { it.updated = Date.now(); rescued++; }
+    if (rescued) { await saveVault(); setTimeout(() => toast(`Moved ${rescued} ID number${rescued > 1 ? 's' : ''} out of document labels so ${rescued > 1 ? 'they stay' : 'it stays'} hidden`), 400); }
     cleanupOrphans().catch(() => {});
     render();
   } catch (e) {
@@ -850,6 +852,25 @@ function ownerChips(cur) {
   const c = String(cur || '').trim().toLowerCase();
   return ownerChoices().map(o => `<button type="button" class="ochip ${o.toLowerCase() === c ? 'on' : ''}" data-act="pick-owner" data-o="${esc(o)}">${esc(o)}</button>`).join('');
 }
+/* An ID number typed into the Label would show unhidden everywhere. Move it into the right field instead. */
+const ID_LIKE = { pan: /^[A-Z]{5}\d{4}[A-Z]$/, aadhaar: /^[2-9]\d{11}$/, passport: /^[A-Z]\d{7}$/, voter: /^[A-Z]{3}\d{7}$/, dl: /^[A-Z]{2}\d{2}[0-9A-Z]{9,13}$/, credit: /^\d{13,19}$/, debit: /^\d{13,19}$/, bank: /^\d{9,18}$/ };
+const idNorm = v => String(v || '').toUpperCase().replace(/[\s\-.]/g, '');
+function defaultTitle(it) {
+  const t = T[it.type] || T.note; const kf = t.fields.find(x => x.k === t.key); const kv = (it.fields || {})[t.key];
+  return t.card && it.fields && it.fields.bank ? `${it.fields.bank} ${lcName(t.n)}` : t.n + (it.owner ? ` · ${it.owner}` : kv && !isSecret(kf) ? ` ${kv}` : '');
+}
+function rescueTitle(it) {   // returns true if it changed the item
+  const t = T[it.type]; if (!t || !it.title) return false;
+  it.fields = it.fields || {};
+  const tn = idNorm(it.title); const kf = t.fields.find(x => x.k === t.key);
+  let changed = false;
+  if (kf && isSecret(kf) && !it.fields[t.key] && ID_LIKE[it.type] && ID_LIKE[it.type].test(tn)) {
+    it.fields[t.key] = it.type === 'aadhaar' ? `${tn.slice(0, 4)} ${tn.slice(4, 8)} ${tn.slice(8)}` : (kf.t === 'card' ? tn : it.title.trim().toUpperCase());
+    changed = true;
+  }
+  if (t.fields.some(fd => isSecret(fd) && it.fields[fd.k] && idNorm(it.fields[fd.k]) === tn)) { it.title = defaultTitle(it); changed = true; }
+  return changed;
+}
 function syncDraft(form) {
   const dr = S.draft; if (!dr || !form) return;
   const fd = new FormData(form); const it = dr.item;
@@ -871,10 +892,8 @@ async function saveDraft(form) {
     if (v) it.fields[x.k] = v; else delete it.fields[x.k];
   }
   if (it.fields.exp && t.exp === 'exp' && !parseMMYY(it.fields.exp)) { toast('“Valid thru” should look like 08/29'); $('#f_exp') && $('#f_exp').focus(); return; }
-  if (!it.title) {
-    const kf = t.fields.find(x => x.k === t.key); const kv = it.fields[t.key];
-    it.title = t.card && it.fields.bank ? `${it.fields.bank} ${lcName(t.n)}` : t.n + (it.owner ? ` · ${it.owner}` : kv && !isSecret(kf) ? ` ${kv}` : '');
-  }
+  const rescued = rescueTitle(it);
+  if (!it.title) it.title = defaultTitle(it);
   const now = Date.now(); if (dr.isNew) it.created = now; it.updated = now;
   const V = S.vault; const idx = V.items.findIndex(x => x.id === it.id);
   if (idx < 0) V.items.push(it); else V.items[idx] = it;
@@ -883,7 +902,7 @@ async function saveDraft(form) {
   await saveVault();
   S.draft = null;
   location.hash = '#/i/' + it.id;
-  toast('Filed in your cabinet');
+  toast(rescued ? `Moved the number from the label into “${(t.fields.find(x => x.k === t.key) || {}).l}” so it stays hidden` : 'Filed in your cabinet');
 }
 async function prepImage(file) {
   try {
