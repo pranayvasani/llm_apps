@@ -3,8 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<!-- connect-src 'none' => the browser refuses every network request this page could make. Your data has nowhere to go. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data: blob:; manifest-src 'self'; worker-src 'self'; connect-src 'none'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'">
+<!-- Security policy: nothing may be sent anywhere. The only network reads allowed are this app's own
+     Scan-to-fill engine files in ./ocr/ (narrowed by the second policy added just below). -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src 'self' data: blob:; manifest-src 'self'; worker-src 'self'; connect-src 'self'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'">
+<script>
+/* Second, stricter policy: fetches may only go to this app's own ocr/ folder (or nowhere, when opened as a local file).
+   Both policies apply, so the effective rule is the narrower one. */
+(function () {
+  var m = document.createElement('meta'); m.httpEquiv = 'Content-Security-Policy';
+  m.content = /^https?:$/.test(location.protocol) ? 'connect-src ' + location.origin + location.pathname.replace(/[^\/]*$/, '') + 'ocr/' : "connect-src 'none'";
+  document.head.appendChild(m);
+})();
+</script>
 <meta name="referrer" content="no-referrer">
 <meta name="theme-color" content="#16191d">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -40,6 +50,28 @@ code{font-family:var(--mono);font-size:.92em;background:#ffffff14;padding:1px 5p
 .ib{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;position:relative;color:#cfd5dc;text-decoration:none}
 .ib:hover{background:#ffffff10}
 .badge{position:absolute;top:4px;right:3px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--red);color:#fff;font-size:11px;font-weight:750;display:grid;place-items:center}
+.scanbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:-4px 0 18px;padding:12px 14px;border-radius:12px;background:linear-gradient(180deg,#fff8e6,#f6ebcd);border:1px solid #e3cf9b}
+.scanbar .sb-t{flex:1;min-width:190px}
+.scanbar b{display:block;font-size:14.5px}
+.scanbar small{display:block;color:var(--paper-muted);font-size:12.5px;line-height:1.35;margin-top:2px}
+.scanbar .btns{justify-content:flex-start}
+.sg-list{display:grid;gap:8px;max-height:52vh;overflow:auto;margin:4px -4px 0;padding:2px 4px}
+.sg{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;align-items:center;padding:9px 10px;border-radius:10px;background:#ffffff08;border:1px solid #2f353d}
+.sg input[type=checkbox]{width:19px;height:19px;accent-color:#e6c46e;grid-row:span 2}
+.sg .sg-l{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:700}
+.sg .sg-l em{font-style:normal;color:#f6c560;text-transform:none;letter-spacing:0;margin-left:6px}
+.sg .sg-v{width:100%;padding:8px 10px;border-radius:8px;border:1px solid #39404a;background:#0f1114;color:var(--ink);font:15px var(--sans)}
+.sg .sg-v.mono{font-family:var(--mono)}
+.sg small{grid-column:2;color:#f6c560;font-size:12px}
+.sg-attach{display:flex;gap:10px;align-items:center;margin-top:12px;font-size:14px;color:#c9d0d8}
+.sg-attach input{width:18px;height:18px;accent-color:#e6c46e}
+.pbar{height:8px;border-radius:4px;background:#2a2f36;overflow:hidden;margin:6px 0 4px}
+.pbar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--brass2),var(--brass1));transition:width .2s}
+.fld input.filled,.fld textarea.filled{animation:filled 2.4s ease-out}
+@keyframes filled{0%,40%{background:#fff0bf;border-color:#c8a24a}}
+.dot{position:absolute;top:9px;right:9px;width:9px;height:9px;border-radius:50%;background:var(--amber);box-shadow:0 0 0 2px #16191d}
+.banner .btn{flex:none}
+.modal .small{font-size:13px;color:var(--muted)}
 .view{max-width:820px;margin:0 auto;padding:18px 16px calc(110px + env(safe-area-inset-bottom))}
 
 /* ---------- home ---------- */
@@ -231,6 +263,8 @@ select.dark{background:#111418;border:1px solid var(--line);color:var(--ink);bor
 .modal h2{margin:0 0 10px;font-size:18px}
 .modal p{color:#b9c1ca;margin:0 0 12px}
 .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+.modal-actions{flex-wrap:wrap}
+@media(max-width:480px){.modal-actions .btn{flex:1 1 auto}}
 .mf{display:grid;gap:12px}
 .mf label{display:grid;gap:6px;font-size:13px;color:var(--muted)}
 .mf input{padding:11px 12px;border-radius:10px;border:1px solid #39404a;background:#0f1114;color:var(--ink);font-size:16px;outline:none;width:100%}
@@ -314,6 +348,7 @@ const P = {
   x: '<path d="M18 6 6 18M6 6l12 12"/>',
   shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
   ext: '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3"/>',
+  share: '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/>',
   wifiOff: '<path d="M1 1l22 22M16.72 11.06A10.94 10.94 0 0 1 19 12.55M5 12.55a10.94 10.94 0 0 1 5.17-2.39M10.71 5.05A16 16 0 0 1 22.58 9M1.42 9a15.91 15.91 0 0 1 4.7-2.88M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01"/>',
 };
 const icon = n => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${P[n] || ''}</svg>`;
@@ -403,14 +438,68 @@ function newVault() {
   return { v: 1, created: Date.now(), updated: Date.now(), settings: { autoLock: 5 }, lastBackup: null,
     drawers: DEFAULT_DRAWERS.map((d, i) => ({ id: d.id, name: d.name, icon: d.icon, color: d.color, order: i, builtin: true })), items: [], deleted: {} };
 }
-async function saveVault() {
+// markChange=false for saves that don't change documents (settings, backup bookkeeping)
+async function saveVault(markChange = true) {
   S.vault.updated = Date.now();
+  if (markChange) S.vault.lastChange = Date.now();
   await kvSet('vault', await encryptBytes(S.key, enc.encode(JSON.stringify(S.vault))));
 }
+/* how many documents changed since the last backup */
+function unbackedCount() {
+  const lb = S.vault.lastBackup || 0;
+  return S.vault.items.filter(i => (i.updated || 0) > lb).length + Object.values(S.vault.deleted || {}).filter(ts => ts > lb).length;
+}
+function needsBackup() {
+  const lb = S.vault.lastBackup || 0;
+  if (!S.vault.items.length && !lb) return false;
+  return unbackedCount() > 0 || (S.vault.lastChange || 0) > lb;
+}
+function ago(ts) {
+  const d = Math.floor((Date.now() - ts) / DAY);
+  return d <= 0 ? 'today' : d === 1 ? 'yesterday' : d < 30 ? `${d} days ago` : fmtDate(new Date(ts));
+}
+function backupBanner(compact) {
+  if (!needsBackup()) return '';
+  const n = unbackedCount(), lb = S.vault.lastBackup;
+  const head = n ? `${n} change${n > 1 ? 's' : ''} not backed up` : 'Changes not backed up';
+  const sub = compact ? (lb ? `Last backup ${ago(lb)}` : 'Never backed up')
+    : `${lb ? `Last backup ${ago(lb)}.` : 'This cabinet has never been backed up.'} If this phone is lost or Chrome’s site data is cleared, anything not backed up is gone.`;
+  return `<div class="banner info">${icon('download')}<span class="grow"><b>${head}</b><br><small>${sub}</small></span><button class="btn sm primary" data-act="export">Back up</button></div>`;
+}
+/* ---------- sharing ---------- */
+function canShareFiles(files) { try { return !!(navigator.canShare && navigator.canShare({ files })); } catch { return false; } }
+async function shareFiles(files, title) {
+  if (!canShareFiles(files)) {
+    files.forEach(f => download(f, f.name));
+    return toast('Sharing isn’t available in this browser, so it was saved to Downloads');
+  }
+  const go = () => navigator.share({ files, title });
+  try { await go(); return true; }
+  catch (e) {
+    if (e.name === 'AbortError') return false;
+    if (e.name === 'NotAllowedError') { // decrypting took long enough for the browser to want a fresh tap
+      const ok = await modal({ title: 'Ready to share', html: `<p>${files.length} file${files.length > 1 ? 's' : ''} ready.</p>`, actions: [{ label: 'Cancel', value: false }, { label: 'Share', cls: 'primary', value: true }] });
+      if (!ok) return false;
+      try { await go(); return true; } catch (e2) { if (e2.name !== 'AbortError') toast('Couldn’t share: ' + e2.message); return false; }
+    }
+    toast('Couldn’t share: ' + e.message); return false;
+  }
+}
+function shareName(a, title, i, n) {
+  const ext = (a.name.match(/\.[a-z0-9]{2,5}$/i) || [a.mime === 'application/pdf' ? '.pdf' : '.jpg'])[0];
+  const base = String(title || 'document').replace(/[\\/:*?"<>|]+/g, '').trim() || 'document';
+  return `${base}${n > 1 ? ` (${i + 1})` : ''}${ext}`;
+}
+async function attFile(a, title, i, n) {
+  const rec = await blobGet(a.id); if (!rec) return null;
+  return new File([await decryptBytes(S.key, rec)], shareName(a, title, i, n), { type: a.mime });
+}
+const itemOfAtt = id => (S.draft && S.draft.item.attachments.some(a => a.id === id)) ? S.draft.item : S.vault.items.find(i => (i.attachments || []).some(a => a.id === id));
 const sortedDrawers = () => [...S.vault.drawers].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 const drawerById = id => S.vault.drawers.find(d => d.id === id);
 const itemById = id => S.vault.items.find(i => i.id === id);
 function drawerTypes(d) { const def = DEFAULT_DRAWERS.find(x => x.id === d.id); return def ? [...def.types, 'note'] : Object.keys(T); }
+const lcName = n => /^Aadhaar/.test(n) ? n : n.replace(/^([A-Z])(?=[a-z])/, c => c.toLowerCase());
 const isSecret = fd => fd && (fd.t === 'secret' || fd.t === 'card');
 const isMono = fd => fd && (fd.mono || fd.t === 'card' || fd.t === 'secret' || fd.t === 'mmyy');
 function groupCard(v) { return String(v).replace(/\D/g, '').replace(/(.{4})/g, '$1 ').trim(); }
@@ -455,6 +544,7 @@ function toast(msg) {
 }
 function modal({ title, html = '', actions = [{ label: 'OK', value: true, cls: 'primary' }], onOpen }) {
   return new Promise(res => {
+    const tt = $('.toast'); if (tt) tt.classList.remove('show');
     const ov = document.createElement('div'); ov.className = 'modal-ov';
     ov.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-label="${esc(title)}"><h2>${esc(title)}</h2><div class="modal-body">${html}</div><div class="modal-actions">${actions.map((a, i) => `<button type="button" class="btn ${a.cls || ''}" data-i="${i}">${esc(a.label)}</button>`).join('')}</div></div>`;
     const close = v => { ov.remove(); res(v); };
@@ -523,7 +613,7 @@ function showLock(msg) {
       </form>`}
     <ul class="promises">
       <li>${icon('shield')} AES-256 encrypted, stored only on this device</li>
-      <li>${icon('wifiOff')} Network access blocked by the app itself</li>
+      <li>${icon('wifiOff')} Nothing is ever uploaded. The app blocks it.</li>
       <li>${icon('lock')} No account, no cloud, no tracking</li>
     </ul></div></main>`;
   setTimeout(() => { const p = $('#p1'); p && p.focus(); }, 50);
@@ -541,7 +631,7 @@ async function onSetup(form) {
   S.key = await deriveKey(p1, salt, ITER);
   S.meta = { v: 1, salt, iter: ITER, created: Date.now() };
   S.vault = newVault();
-  await kvSet('meta', S.meta); await saveVault();
+  await kvSet('meta', S.meta); await saveVault(false);
   S.hasVault = true; S.last = Date.now();
   try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch {}
   if (location.hash !== '#/') location.hash = '#/'; else render();
@@ -581,7 +671,7 @@ function header() {
     <nav class="top-actions">
       <a class="ib" href="#/search" aria-label="Search">${icon('search')}</a>
       <a class="ib" href="#/due" aria-label="Renewals and expiries">${icon('bell')}${n ? `<span class="badge">${n}</span>` : ''}</a>
-      <a class="ib" href="#/settings" aria-label="Settings and backup">${icon('gear')}</a>
+      <a class="ib" href="#/settings" aria-label="Settings and backup${needsBackup() ? ' (backup needed)' : ''}">${icon('gear')}${needsBackup() ? '<span class="dot"></span>' : ''}</a>
       <button class="ib" data-act="lock" aria-label="Lock now">${icon('lock')}</button>
     </nav></header>`;
 }
@@ -596,10 +686,8 @@ function vHome() {
     const ex = att.filter(x => x.d.days < 0).length;
     banners += `<a class="banner warn" href="#/due">${icon('bell')}<span class="grow"><b>${att.length} ${att.length > 1 ? 'documents need' : 'document needs'} attention</b><br><small>${ex ? `${ex} expired · ` : ''}renewals due within 30 days</small></span>${icon('chev')}</a>`;
   }
-  if (V.items.length && (!V.lastBackup || Date.now() - V.lastBackup > 30 * DAY)) {
-    banners += `<a class="banner info" href="#/settings">${icon('download')}<span class="grow"><b>${V.lastBackup ? 'Your backup is over a month old' : 'No backup yet'}</b><br><small>Your cabinet exists only on this device. Export an encrypted copy.</small></span>${icon('chev')}</a>`;
-  }
-  return `<div class="privacy-pill">${icon('shield')} Encrypted · on this device only · network blocked</div>${banners}
+  banners += backupBanner(false);
+  return `<div class="privacy-pill">${icon('shield')} Encrypted · on this device only · no uploads</div>${banners}
     <div class="cabinet"><div class="cab-top"><span class="keyhole"></span></div><div class="cab-body">${sortedDrawers().map(drawerHTML).join('')}</div><div class="cab-base"></div></div>
     <button class="add-drawer" data-act="new-drawer">${icon('plus')} Add a drawer</button>
     <a class="fab" href="#/new">${icon('plus')} Add document</a>`;
@@ -624,7 +712,7 @@ function vDrawer(id) {
   const filters = owners.length > 1 ? `<div class="filters"><button class="fchip ${!of ? 'on' : ''}" data-act="owner" data-d="${esc(id)}" data-o="">Everyone</button>${owners.map(o => `<button class="fchip ${of === o ? 'on' : ''}" data-act="owner" data-d="${esc(id)}" data-o="${esc(o)}">${esc(o)}</button>`).join('')}</div>` : '';
   const body = items.length ? items.map(folderHTML).join('')
     : `<div class="empty"><div class="big">${esc(d.icon)}</div><p>This drawer is empty.</p><a class="btn primary" href="#/new/${esc(id)}">${icon('plus')} Add the first document</a></div>`;
-  return pageHead('#/', `<span>${esc(d.icon)}</span><span class="t">${esc(d.name)}</span>`) + filters +
+  return pageHead('#/', `<span>${esc(d.icon)}</span><span class="t">${esc(d.name)}</span>`) + backupBanner(true) + filters +
     `<div class="tray" style="--accent:${safeColor(d.color)}">${body}</div>
      <a class="fab" href="#/new/${esc(id)}">${icon('plus')} Add</a>`;
 }
@@ -652,7 +740,9 @@ function vItem(id) {
     ${rows ? `<dl class="rows">${rows}</dl>` : `<p class="muted-p">No details yet. <a href="#/edit/${esc(it.id)}">Add them</a>.</p>`}
     ${it.notes ? `<h3 class="sec">Notes</h3><div class="notes">${esc(it.notes)}</div>` : ''}
     <h3 class="sec">Scans & files</h3>
-    ${atts.length ? `<div class="atts">${atts.map(a => attHTML(a, false)).join('')}</div>` : `<p class="muted-p">No scans yet. <a href="#/edit/${esc(it.id)}">Add a photo or PDF</a>.</p>`}
+    ${atts.length ? `<div class="atts">${atts.map(a => attHTML(a, false)).join('')}</div>
+      <div class="att-add"><button class="btn sm primary" data-act="share-atts" data-id="${esc(it.id)}">${icon('share')} Share ${atts.length > 1 ? `all ${atts.length} scans` : 'scan'}</button></div>`
+      : `<p class="muted-p">No scans yet. <a href="#/edit/${esc(it.id)}">Add a photo or PDF</a>.</p>`}
     <div class="sheet-actions">
       ${di && di.days >= 0 ? `<button class="btn sm" data-act="ics" data-id="${esc(it.id)}">${icon('cal')} Remind me in my calendar</button>` : ''}
       <select class="mv" data-change="move" data-id="${esc(it.id)}" aria-label="Move to drawer"><option value="" selected disabled>Move to drawer…</option>${sortedDrawers().filter(x => x.id !== it.drawerId).map(x => `<option value="${esc(x.id)}">${esc(x.icon)} ${esc(x.name)}</option>`).join('')}</select>
@@ -722,9 +812,11 @@ function vEditor(r) {
   const it = dr.item, t = T[it.type]; const d = drawerById(it.drawerId) || { color: '#888888' };
   const owners = [...new Set(S.vault.items.map(i => i.owner).filter(Boolean))].sort();
   const back = dr.isNew ? `#/new/${esc(it.drawerId)}` : `#/i/${esc(it.id)}`;
-  return pageHead(back, `<span class="t">${dr.isNew ? 'New' : 'Edit'} ${esc(t.n.toLowerCase())}</span>`) +
+  return pageHead(back, `<span class="t">${dr.isNew ? 'New' : 'Edit'} ${esc(lcName(t.n))}</span>`) +
   `<div class="fo" style="--accent:${safeColor(d.color)}"><span class="ftab">${t.ic} ${esc(t.n)}</span>
    <form class="sheet form" data-form="item" autocomplete="off" novalidate>
+    <div class="scanbar"><div class="sb-t"><b>${icon('camera')} Scan to fill</b><small>Take a photo of the ${esc(lcName(t.n))}. It’s read on this phone, and you check every value before it’s filled in.</small></div>
+      <div class="btns"><label class="btn sm primary">${icon('camera')} Camera<input type="file" accept="image/*" capture="environment" data-change="scan" hidden></label><label class="btn sm">${icon('upload')} From photos<input type="file" accept="image/*" data-change="scan" hidden></label></div></div>
     <div class="grid">
       <div class="fld"><label for="f-title">Label</label><input id="f-title" name="title" maxlength="80" value="${esc(it.title)}" placeholder="${esc(t.n)}" autocomplete="off"></div>
       <div class="fld"><label for="f-owner">Belongs to</label><input id="f-owner" name="owner" list="owners" maxlength="40" value="${esc(it.owner)}" placeholder="e.g. Me, spouse, child" autocomplete="off"><datalist id="owners">${owners.map(o => `<option value="${esc(o)}">`).join('')}</datalist></div>
@@ -768,7 +860,7 @@ async function saveDraft(form) {
   if (it.fields.exp && t.exp === 'exp' && !parseMMYY(it.fields.exp)) { toast('“Valid thru” should look like 08/29'); $('#f_exp') && $('#f_exp').focus(); return; }
   if (!it.title) {
     const kf = t.fields.find(x => x.k === t.key); const kv = it.fields[t.key];
-    it.title = t.card && it.fields.bank ? `${it.fields.bank} ${t.n.toLowerCase()}` : t.n + (it.owner ? ` · ${it.owner}` : kv && !isSecret(kf) ? ` ${kv}` : '');
+    it.title = t.card && it.fields.bank ? `${it.fields.bank} ${lcName(t.n)}` : t.n + (it.owner ? ` · ${it.owner}` : kv && !isSecret(kf) ? ` ${kv}` : '');
   }
   const now = Date.now(); if (dr.isNew) it.created = now; it.updated = now;
   const V = S.vault; const idx = V.items.findIndex(x => x.id === it.id);
@@ -866,19 +958,29 @@ function vSettings() {
   return pageHead('#/', '<span class="t">Settings & backup</span>') + `
   <section class="panel"><h2>${icon('shield')} How your data is protected</h2>
     <p>Everything is encrypted with AES-256-GCM. The key comes from your passphrase (PBKDF2-SHA-256, ${S.meta.iter.toLocaleString('en-IN')} rounds) and exists only in memory while the cabinet is unlocked. The encrypted data lives in this browser’s storage on this device.</p>
-    <p>The page’s security policy sets <code>connect-src 'none'</code>, which makes the browser refuse every network request the app could make. There’s no server and no account.</p></section>
+    <p>The page’s security policy stops the browser from sending anything anywhere. The only thing the app may download is its own Scan to fill engine, from the <code>ocr/</code> folder of this app’s site. There’s no server and no account.</p></section>
+  <section class="panel"><h2>${icon('camera')} Scan to fill</h2>
+    <p>Reads document photos on this device using PaddleOCR. Photos are never uploaded.</p>
+    <div class="set-row"><span id="ocr-status" class="muted">Checking…</span><span class="btns" id="ocr-btns"></span></div></section>
   <section class="panel"><h2>Security</h2>
     <div class="set-row"><span>Auto-lock after inactivity</span><select class="dark" data-change="autolock" aria-label="Auto-lock minutes">${[1, 2, 5, 10, 15, 30].map(m => `<option value="${m}" ${+V.settings.autoLock === m ? 'selected' : ''}>${m} min</option>`).join('')}</select></div>
     <div class="set-row"><span>Passphrase</span><button class="btn sm" data-act="change-pass">Change</button></div></section>
   <section class="panel"><h2>Backup & moving between devices</h2>
-    <p>Nothing syncs by itself. To put your cabinet on your phone or laptop, export a backup here and import it on the other device. You can move the file by USB, Nearby Share or AirDrop; it stays encrypted with your passphrase. Importing merges the two: the newer version of each document wins, and nothing is duplicated.</p>
-    <div class="set-row"><span>Last backup<br><small class="muted">${V.lastBackup ? fmtDate(new Date(V.lastBackup)) : 'Never'}</small></span>
-      <span class="btns"><button class="btn sm primary" data-act="export">${icon('download')} Export</button><label class="btn sm">${icon('upload')} Import<input type="file" data-change="import" hidden></label></span></div></section>
+    <p>Nothing syncs by itself, and your cabinet lives only in this browser. Back up whenever you’ve added or changed documents; the cabinet reminds you when there are changes that haven’t been backed up. Save the file to Downloads or send it to your laptop. It stays encrypted with your passphrase wherever it goes.</p>
+    <p>To restore, or to copy the cabinet to another device, use Import there. Importing merges the two: the newer version of each document wins, and nothing is duplicated.</p>
+    <div class="set-row"><span>Last backup<br><small class="muted">${V.lastBackup ? `${fmtDate(new Date(V.lastBackup))}${needsBackup() ? ` · ${unbackedCount() || 'some'} change${unbackedCount() === 1 ? '' : 's'} since` : ' · up to date'}` : 'Never'}</small></span>
+      <span class="btns"><button class="btn sm primary" data-act="export">${icon('download')} Back up now</button><label class="btn sm">${icon('upload')} Import<input type="file" data-change="import" hidden></label></span></div></section>
   <section class="panel"><h2>Drawers</h2>
     ${sortedDrawers().map(d => `<div class="set-row"><span>${esc(d.icon)} ${esc(d.name)} <small class="muted">· ${counts(d.id)}</small></span><span class="btns"><button class="btn sm" data-act="rename-drawer" data-id="${esc(d.id)}">Edit</button>${counts(d.id) === 0 ? `<button class="btn sm danger" data-act="delete-drawer" data-id="${esc(d.id)}">Remove</button>` : ''}</span></div>`).join('')}
     <div class="set-row"><span class="muted">Need another drawer?</span><button class="btn sm" data-act="new-drawer">${icon('plus')} Add drawer</button></div></section>
   <section class="panel"><h2>Storage on this device</h2><div id="storage-info" class="muted" style="font-size:14px">Checking…</div></section>
   <section class="panel"><h2>Erase everything</h2><p>Deletes the encrypted cabinet from this browser. Without a backup it can’t be recovered.</p><button class="btn danger" data-act="wipe">${icon('trash')} Erase this cabinet</button></section>`;
+}
+async function fillScanner() {
+  const el = $('#ocr-status'), b = $('#ocr-btns'); if (!el) return;
+  const have = await scannerStatus();
+  el.textContent = have ? `Downloaded (about ${Math.round(OCR_BYTES / 1e6)} MB), works offline` : have === false ? (S.vault.settings.ocrOk ? 'Not on this device right now. It downloads again on your next scan.' : 'Not downloaded yet. It downloads on your first scan.') : 'Unavailable in this browser';
+  b.innerHTML = have ? '<button class="btn sm" data-act="ocr-remove">Remove download</button>' : '';
 }
 async function fillStorage() {
   const el = $('#storage-info'); if (!el) return;
@@ -912,7 +1014,7 @@ function render() {
   loadThumbs(app);
   const routeKey = r.join('/'); if (routeKey !== S.lastRoute) { window.scrollTo(0, 0); S.lastRoute = routeKey; }
   if (r[0] === 'search') { const q = $('#q'); q && q.focus(); }
-  if (r[0] === 'settings') fillStorage();
+  if (r[0] === 'settings') { fillStorage(); fillScanner(); }
 }
 
 /* ---------- actions ---------- */
@@ -921,14 +1023,20 @@ function findAtt(id) {
   return pool.find(a => a.id === id);
 }
 async function openViewer(a) {
-  const url = await blobURL(a.id, a.mime); if (!url) return toast('Couldn’t open that file');
-  const isImg = a.mime.startsWith('image/');
+  const it = itemOfAtt(a.id); const list = (it && it.attachments) || [a]; const idx = Math.max(0, list.findIndex(x => x.id === a.id));
+  const file = await attFile(a, it && (it.title || (T[it.type] || T.note).n), idx, list.length);
+  if (!file) return toast('Couldn’t open that file');
+  const url = URL.createObjectURL(file); S.urls.add(url);
+  const isImg = a.mime.startsWith('image/'); const nm = esc(file.name);
   const ov = document.createElement('div'); ov.className = 'viewer'; ov.setAttribute('role', 'dialog');
-  ov.innerHTML = `<div class="viewer-bar"><span>${esc(a.name)} · ${fmtSize(a.size)}</span><a class="vbtn" href="${url}" download="${esc(a.name)}" aria-label="Save a copy">${icon('download')}</a><button class="vbtn" data-close aria-label="Close">${icon('x')}</button></div>
-    <div class="viewer-body">${isImg ? `<img src="${url}" alt="${esc(a.name)}">` : `<div class="viewer-file">${icon('file')}<p>${esc(a.name)}</p><p class="muted">${fmtSize(a.size)}</p><a class="btn primary" href="${url}" target="_blank" rel="noopener">${icon('ext')} Open</a> <a class="btn" href="${url}" download="${esc(a.name)}">${icon('download')} Save copy</a></div>`}</div>`;
+  ov.innerHTML = `<div class="viewer-bar"><span>${nm} · ${fmtSize(a.size)}</span><button class="vbtn" data-share aria-label="Share">${icon('share')}</button><a class="vbtn" href="${url}" download="${nm}" aria-label="Save a copy">${icon('download')}</a><button class="vbtn" data-close aria-label="Close">${icon('x')}</button></div>
+    <div class="viewer-body">${isImg ? `<img src="${url}" alt="${nm}">` : `<div class="viewer-file">${icon('file')}<p>${nm}</p><p class="muted">${fmtSize(a.size)}</p><a class="btn primary" href="${url}" target="_blank" rel="noopener">${icon('ext')} Open</a> <button class="btn" data-share>${icon('share')} Share</button> <a class="btn" href="${url}" download="${nm}">${icon('download')} Save copy</a></div>`}</div>`;
   const close = () => { ov.remove(); document.removeEventListener('keydown', onKey); };
   const onKey = e => { if (e.key === 'Escape') close(); };
-  ov.addEventListener('click', e => { if (e.target.closest('[data-close]') || e.target.classList.contains('viewer-body')) close(); });
+  ov.addEventListener('click', e => {
+    if (e.target.closest('[data-share]')) { shareFiles([file], file.name); return; }
+    if (e.target.closest('[data-close]') || e.target.classList.contains('viewer-body')) close();
+  });
   document.addEventListener('keydown', onKey);
   document.body.appendChild(ov);
 }
@@ -949,6 +1057,110 @@ function drawerModal(title, d = {}) {
     html: `<div class="mf"><label>Name<input id="nd-name" maxlength="40" value="${esc(d.name || '')}" placeholder="e.g. Travel, Pets, Kids’ school"></label><label>Icon (one emoji)<input id="nd-ic" maxlength="4" value="${esc(d.icon || '📁')}"></label><div class="swatches">${COLORS.map(c => `<button type="button" class="sw ${c === (d.color || COLORS[0]) ? 'on' : ''}" data-c="${c}" style="background:${c}" aria-label="Colour ${c}"></button>`).join('')}</div></div>`,
     actions: [{ label: 'Cancel', value: null }, { label: 'Save', cls: 'primary', value: ov => { const n = ov.querySelector('#nd-name').value.trim(); if (!n) { ov.querySelector('#nd-name').focus(); return undefined; } const on = ov.querySelector('.sw.on'); return { name: n, icon: ov.querySelector('#nd-ic').value.trim() || '📁', color: on ? on.dataset.c : COLORS[0] }; } }],
     onOpen: ov => ov.addEventListener('click', e => { const s = e.target.closest('.sw'); if (s) { ov.querySelectorAll('.sw').forEach(x => x.classList.remove('on')); s.classList.add('on'); } }) });
+}
+
+/* ---------- Scan to fill (on-device OCR, loaded on first use) ---------- */
+const OCR = { ready: null };
+const OCR_BYTES = 14848852 + 4896928 + 16559278 + 74014;   // engine + models, for the progress bar
+const ocrBase = () => new URL('ocr/', location.href).href;
+function loadScript(src) {
+  return new Promise((res, rej) => { const el = document.createElement('script'); el.src = src; el.onload = res; el.onerror = () => rej(new Error('Couldn’t load the scanner. Are you online for the first download?')); document.head.appendChild(el); });
+}
+async function fetchBytes(url, tick) {
+  const r = await fetch(url); if (!r.ok) throw new Error(`Couldn’t download the scanner (${r.status}).`);
+  if (!r.body || !r.body.getReader) { const b = new Uint8Array(await r.arrayBuffer()); tick(b.length); return b; }
+  const reader = r.body.getReader(); const parts = []; let n = 0;
+  for (;;) { const { done, value } = await reader.read(); if (done) break; parts.push(value); n += value.length; tick(value.length); }
+  const out = new Uint8Array(n); let o = 0; for (const p of parts) { out.set(p, o); o += p.length; } return out;
+}
+function ensureOCR(progress) {
+  if (OCR.ready) return OCR.ready;
+  OCR.ready = (async () => {
+    const base = ocrBase(); let got = 0; const tick = n => { got += n; progress(Math.min(1, got / OCR_BYTES)); };
+    await loadScript(base + 'ort.wasm.min.js'); await loadScript(base + 'paddle-ocr.js'); await loadScript(base + 'extract.js');
+    const [wasm, det, rec, dict] = await Promise.all(['ort-wasm-simd-threaded.wasm', 'det.ort', 'rec.onnx', 'dict.txt'].map(f => fetchBytes(base + f, tick)));
+    window.ort.env.wasm.wasmBinary = wasm;
+    await window.TijoriOCR.init({ ort: window.ort, detModel: det, recModel: rec, dictText: new TextDecoder().decode(dict), wasmPaths: base });
+  })();
+  OCR.ready.catch(() => { OCR.ready = null; });
+  return OCR.ready;
+}
+function progressPanel(title) {
+  const ov = document.createElement('div'); ov.className = 'modal-ov';
+  ov.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-label="${esc(title)}"><h2>${esc(title)}</h2><p id="pp-msg">Starting…</p><div class="pbar"><i id="pp-bar"></i></div><div class="modal-actions"><button type="button" class="btn" id="pp-x">Cancel</button></div></div>`;
+  const st = { cancelled: false };
+  ov.querySelector('#pp-x').onclick = () => { st.cancelled = true; ov.remove(); };
+  document.body.appendChild(ov);
+  st.set = (msg, frac) => { const m = ov.querySelector('#pp-msg'), b = ov.querySelector('#pp-bar'); if (m) m.textContent = msg; if (b && frac != null) b.style.width = Math.round(frac * 100) + '%'; };
+  st.close = () => ov.remove();
+  return st;
+}
+async function scanToFill(file) {
+  if (!S.draft) return;
+  if (!/^https?:$/.test(location.protocol)) return modal({ title: 'Scan to fill', html: '<p>Scanning works when Tijori is opened from its web address or installed on your phone. It doesn’t work from a downloaded file.</p>' });
+  if (!S.vault.settings.ocrOk) {
+    const ok = await modal({ title: 'Turn on Scan to fill?', html: `<p>Tijori reads documents with a text-recognition engine that runs on this phone. It needs a one-time download of about ${Math.round(OCR_BYTES / 1e6)} MB from this app’s own site. After that it works offline.</p><p>Your photos are read on this device and are never uploaded.</p><p class="small">Use Wi-Fi if you can.</p>`, actions: [{ label: 'Not now', value: false }, { label: 'Download and scan', cls: 'primary', value: true }] });
+    if (!ok) return;
+  }
+  const type = S.draft.item.type; const key = S.draft.key;
+  const pp = progressPanel('Reading your document');
+  try {
+    await ensureOCR(f => pp.set(f >= 1 ? 'Starting the reader…' : `Downloading the reader… ${Math.round(f * 100)}%`, f * 0.4));
+    if (pp.cancelled) return;
+    if (!S.vault.settings.ocrOk) { S.vault.settings.ocrOk = true; await saveVault(false); }
+    pp.set('Finding the text…', 0.45);
+    const bmp = await createImageBitmap(file);
+    const res = await window.TijoriOCR.recognize(bmp, { maxSide: 1280, onProgress: f => pp.set('Reading the text…', 0.5 + f * 0.5) });
+    bmp.close && bmp.close();
+    if (pp.cancelled || !S.draft || S.draft.key !== key) return;
+    pp.close();
+    await reviewScan(window.TijoriExtract.extract(type, res), file, res);
+  } catch (e) {
+    console.error(e); pp.close();
+    if (!pp.cancelled) modal({ title: 'Couldn’t scan', html: `<p>${esc(e.message || 'Something went wrong while reading the photo.')}</p>` });
+  }
+}
+async function reviewScan(ex, file, res) {
+  const form = $('form[data-form=item]'); if (!form || !S.draft) return; syncDraft(form);
+  const it = S.draft.item, t = T[it.type];
+  const rows = [];
+  if (ex.title && !it.title.trim()) rows.push({ k: '__title', l: 'Label', v: ex.title, cur: '', conf: 'medium', fd: { t: 'text' } });
+  for (const fd of t.fields) {
+    const sug = ex.fields[fd.k]; if (!sug) continue;
+    const v = fd.t === 'card' ? groupCard(sug.value) : sug.value;
+    const cur = String(it.fields[fd.k] || '').trim();
+    const same = cur && cur.replace(/\s/g, '').toUpperCase() === String(v).replace(/\s/g, '').toUpperCase();
+    if (!same) rows.push({ k: fd.k, l: fd.l, v, cur, conf: sug.conf, fd });
+  }
+  const attach = `<label class="sg-attach"><input type="checkbox" id="sg-att" checked> Also attach this photo to the document</label>`;
+  if (!rows.length) {
+    const lines = res.lines.length;
+    const r = await modal({ title: lines ? 'No new details found' : 'Couldn’t read any text', html: `<p>${lines ? `Read ${lines} line${lines > 1 ? 's' : ''} of text, but nothing matched the fields for a ${esc(lcName(t.n))}${Object.keys(ex.fields).length ? ' that you haven’t already filled' : ''}.` : 'Try again with the document filling the frame, in good light and without glare.'}</p>${attach}`,
+      actions: [{ label: 'Close', value: null, cls: 'primary', }].map(a => ({ ...a, value: ov => ({ att: ov.querySelector('#sg-att').checked }) })) });
+    if (r && r.att) await addFiles([file]);
+    return;
+  }
+  const inputFor = r => r.fd.t === 'date' ? `<input class="sg-v" type="date" data-k="${r.k}" value="${esc(r.v)}">` : `<input class="sg-v ${isMono(r.fd) ? 'mono' : ''}" type="text" data-k="${r.k}" value="${esc(r.v)}" autocomplete="off" spellcheck="false">`;
+  const html = `<p class="small">Found ${rows.length} detail${rows.length > 1 ? 's' : ''}. Untick anything wrong, or correct it here.</p><div class="sg-list">${rows.map(r => `<label class="sg"><input type="checkbox" data-c="${r.k}" ${r.conf === 'low' || (r.cur && r.cur !== r.v) ? '' : 'checked'}><span class="sg-l">${esc(r.l)}${r.conf === 'low' ? '<em>please check</em>' : ''}</span>${inputFor(r)}${r.cur ? `<small>Will replace “${esc(r.cur)}”</small>` : ''}</label>`).join('')}</div>${attach}`;
+  const picked = await modal({ title: `Scanned ${lcName(t.n)}`, html, actions: [{ label: 'Cancel', value: null }, { label: 'Fill in', cls: 'primary', value: ov => ({
+    vals: [...ov.querySelectorAll('[data-c]')].filter(c => c.checked).map(c => ({ k: c.dataset.c, v: ov.querySelector(`.sg-v[data-k="${c.dataset.c}"]`).value.trim() })).filter(x => x.v),
+    att: ov.querySelector('#sg-att').checked }) }] });
+  if (!picked) return;
+  const f2 = $('form[data-form=item]'); if (!f2) return;
+  for (const { k, v } of picked.vals) {
+    const el = k === '__title' ? f2.elements.namedItem('title') : f2.elements.namedItem('f_' + k); if (!el) continue;
+    const fd = t.fields.find(x => x.k === k);
+    el.value = fd && fd.t === 'card' ? groupCard(v) : v;
+    if (k === 'expiry') el.dataset.manual = '1';
+    el.classList.remove('filled'); void el.offsetWidth; el.classList.add('filled');
+  }
+  if (it.type === 'warranty' && !picked.vals.some(x => x.k === 'expiry')) autoWarranty(f2);
+  syncDraft(f2);
+  if (picked.att) await addFiles([file]);
+  if (picked.vals.length) toast(`Filled ${picked.vals.length} field${picked.vals.length > 1 ? 's' : ''}. Give them a quick check, then save.`);
+}
+async function scannerStatus() {
+  try { if (!window.caches) return null; const c = await caches.open('tijori-ocr-v1'); return !!(await c.match(ocrBase() + 'rec.onnx')); } catch { return null; }
 }
 
 const ACT = {
@@ -999,17 +1211,41 @@ const ACT = {
     if (!await confirmM('Remove drawer?', `“${d.name}” is empty and will be removed.`, 'Remove', true)) return;
     S.vault.drawers = S.vault.drawers.filter(x => x.id !== d.id); await saveVault(); render();
   },
-  export: async el => {
+  'ocr-remove': async () => {
+    if (!await confirmM('Remove the scanner download?', `Frees about ${Math.round(OCR_BYTES / 1e6)} MB. Scan to fill downloads it again the next time you use it.`, 'Remove', true)) return;
+    await caches.delete('tijori-ocr-v1'); S.vault.settings.ocrOk = false; await saveVault(false); fillScanner(); toast('Scanner download removed');
+  },
+  'share-atts': async el => {
+    const it = itemById(el.dataset.id); const atts = it.attachments || []; if (!atts.length) return;
     el.disabled = true;
+    try {
+      const files = (await Promise.all(atts.map((a, i) => attFile(a, it.title, i, atts.length)))).filter(Boolean);
+      await shareFiles(files, it.title);
+    } finally { el.disabled = false; }
+  },
+  export: async el => {
+    el.disabled = true; let json; const now = Date.now();
     try {
       const blobs = {};
       for (const k of await blobKeys()) { const r = await blobGet(k); blobs[k] = { iv: b64(r.iv), ct: b64(r.ct) }; }
-      S.vault.lastBackup = Date.now();
-      const v = await encryptBytes(S.key, enc.encode(JSON.stringify(S.vault)));
-      const out = { app: 'tijori', format: 1, exported: new Date().toISOString(), kdf: { salt: b64(S.meta.salt), iter: S.meta.iter }, vault: { iv: b64(v.iv), ct: b64(v.ct) }, blobs };
-      download(new Blob([JSON.stringify(out)], { type: 'application/octet-stream' }), `tijori-backup-${isoDate(new Date())}.tijori`);
-      await saveVault(); render(); toast('Encrypted backup saved to your downloads');
+      const v = await encryptBytes(S.key, enc.encode(JSON.stringify({ ...S.vault, lastBackup: now })));
+      json = JSON.stringify({ app: 'tijori', format: 1, exported: new Date(now).toISOString(), kdf: { salt: b64(S.meta.salt), iter: S.meta.iter }, vault: { iv: b64(v.iv), ct: b64(v.ct) }, blobs });
     } finally { el.disabled = false; }
+    const date = isoDate(new Date(now));
+    // Browsers only let a short list of file types be shared, so the shared copy is a .txt (same contents; Import accepts it).
+    const shareFile = new File([json], `tijori-backup-${date}.txt`, { type: 'text/plain' });
+    const canShare = canShareFiles([shareFile]);
+    const n = S.vault.items.length, scans = S.vault.items.reduce((s, i) => s + (i.attachments || []).length, 0);
+    const choice = await modal({ title: 'Backup ready',
+      html: `<p>${n} document${n === 1 ? '' : 's'} and ${scans} scan${scans === 1 ? '' : 's'}, ${fmtSize(json.length)}, encrypted with your passphrase.</p>
+        <p>Keep it off this device as well, on your laptop or a USB drive, so it survives a lost phone.</p>
+        ${canShare ? '<p class="small">“Send to…” opens your share sheet: Quick Share, AirDrop, Files or any app you choose. The file stays encrypted wherever it goes.</p>' : ''}`,
+      actions: [{ label: 'Cancel', value: null }, { label: 'Save to Downloads', value: 'dl', cls: canShare ? '' : 'primary' }, ...(canShare ? [{ label: 'Send to…', value: 'share', cls: 'primary' }] : [])] });
+    if (!choice) return;
+    if (choice === 'dl') download(new Blob([json], { type: 'application/octet-stream' }), `tijori-backup-${date}.tijori`);
+    else if (!(await shareFiles([shareFile], 'Tijori backup'))) return;
+    S.vault.lastBackup = now; await saveVault(false); render();
+    toast(choice === 'dl' ? 'Backup saved to Downloads' : 'Backup sent');
   },
   'change-pass': async () => {
     const r = await modal({ title: 'Change passphrase',
@@ -1089,9 +1325,10 @@ document.addEventListener('change', async e => {
   const el = e.target, c = el.dataset && el.dataset.change; if (!c) return;
   try {
     if (c === 'att') { const files = [...el.files]; el.value = ''; await addFiles(files); }
+    else if (c === 'scan') { const file = el.files[0]; el.value = ''; if (file) await scanToFill(file); }
     else if (c === 'import') { const file = el.files[0]; el.value = ''; if (file) await importBackup(file); }
     else if (c === 'move') { const it = itemById(el.dataset.id); it.drawerId = el.value; it.updated = Date.now(); await saveVault(); const d = drawerById(el.value); render(); toast(`Moved to ${d.name}`); }
-    else if (c === 'autolock') { S.vault.settings.autoLock = +el.value; await saveVault(); toast(`Locks after ${el.value} min idle`); }
+    else if (c === 'autolock') { S.vault.settings.autoLock = +el.value; await saveVault(false); toast(`Locks after ${el.value} min idle`); }
   } catch (err) { console.error(err); toast(err.message || 'Something went wrong'); }
 });
 document.addEventListener('input', e => {
@@ -1140,7 +1377,11 @@ document.addEventListener('visibilitychange', () => {
   showLock();
   if (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
     const l = document.createElement('link'); l.rel = 'manifest'; l.href = 'manifest.json'; document.head.appendChild(l);
-    if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+    if ('serviceWorker' in navigator) {
+      const hadController = !!navigator.serviceWorker.controller;
+      navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController) toast('Tijori was updated. Close and reopen it to get the new version.'); });
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    }
   }
 })();
 })();

@@ -17,10 +17,33 @@ policy (`connect-src 'none'`) makes the browser block every network request the 
    After that it runs offline. The host only serves the app's code. Your documents stay in the
    phone's own storage.
 
-## Moving data between phone and desktop
-Go to Settings → Export to save a `.tijori` file. It's encrypted with your passphrase. Send it
-to the other device by USB, Nearby Share or AirDrop, then go to Settings → Import there.
-Importing merges the two cabinets, and the newer version of each document wins.
+## Backups and moving data between devices
+The cabinet reminds you whenever there are changes that haven't been backed up. Tap **Back up** and
+choose **Save to Downloads** or **Send to…**, which opens the share sheet (Quick Share, AirDrop,
+Files…). The file is encrypted with your passphrase. To restore, or to copy the cabinet to another
+device, go to Settings → Import there. Importing merges the two cabinets, and the newer version of
+each document wins.
+
+## Scan to fill
+When adding a document, tap **Camera** or **From photos** in the "Scan to fill" box. Tijori reads the
+photo **on the phone** using PaddleOCR (PP-OCRv5 mobile) running in ONNX Runtime Web, then picks out
+the fields with format rules and check digits. Those include PAN format, the Aadhaar check digit, the
+card-number check digit, IFSC, DL and vehicle registration formats, and dates next to labels like
+"Valid till". You confirm or edit every value before it's filled in. Values that fail a check digit
+are left unticked and marked "please check".
+
+- The first scan downloads the engine and models (about 36 MB) from this app's own `ocr/` folder.
+  After that, scanning works offline. Settings → Scan to fill can remove the download.
+- Photos are never uploaded. The page's security policy only allows network reads from `ocr/`,
+  so the app can't send anything anywhere.
+- Works best with the document filling the frame, in even light, without glare. Raised digits on
+  credit cards and handwriting are hard for any OCR.
+- Third-party files and their checksums are listed in `ocr/NOTICE.md` and `ocr/SHA256SUMS`.
+
+## Sharing scans
+Open a document and tap **Share scan** (or **Share all scans**), or use the share button while
+viewing a photo or PDF. The file is decrypted for that one share and sent to the app you pick, such
+as WhatsApp or email. Shared copies are no longer protected by Tijori.
 
 ## Things to know
 - If you forget the passphrase, nothing can be recovered. Keep regular backups.
