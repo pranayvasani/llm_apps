@@ -218,6 +218,46 @@
     return out;
   }
   const CITY = /^[A-Z][A-Z .,'\-]{2,30}$/;
+  function addMonthsIso(iso, n) {   // warranty of n months from a purchase date ends the day before the same date n months later
+    const [y, m, d] = iso.split('-').map(Number); const r = new Date(y, m - 1, 1); r.setMonth(r.getMonth() + n);
+    const last = new Date(r.getFullYear(), r.getMonth() + 1, 0).getDate(); r.setDate(Math.min(d, last)); r.setDate(r.getDate() - 1);
+    return `${r.getFullYear()}-${pad(r.getMonth() + 1)}-${pad(r.getDate())}`;
+  }
+  const fmtIso = iso => { const [y, m, d] = iso.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }); };
+  const WORDNUM = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, twelve: 12, eighteen: 18, twenty: 20, 'twenty four': 24, thirty: 30, 'thirty six': 36 };
+  const PART = /(compressor|motor|panel|display|magnetron|inverter|drum|battery|tube|picture\s*tube|heating\s*element|element|pump|engine|screen)/i;
+  // Warranty terms anywhere on the document: main duration, extended, per-part durations, or an end date printed outright.
+  function warrantyTerms(o, T) {
+    const out = { months: null, until: null, extended: null, extendedMonths: 0, parts: [] };
+    const NUM = '(\\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|twelve|eighteen|twenty(?:\\s*four)?|thirty(?:\\s*six)?)';
+    const UNIT = '(years?|yrs?|y(?=\\b)|months?|mths?|mos?|m(?=\\b))';
+    const toN = x => /^\d+$/.test(x) ? +x : WORDNUM[x.toLowerCase().replace(/\s+/g, ' ')] || 0;
+    const toM = (n, u) => /^y/i.test(u) ? n * 12 : n;
+    for (const l of o.lines) {
+      const t = clean(l.text); if (!/warrant|guarantee/i.test(t)) continue;
+      // an end date printed outright: "Warranty valid till 31/12/2027", "Warranty expires on ..."
+      if (/(valid|upto|up\s*to|till|until|expir|ends?\b|end\s*date)/i.test(t)) { const ds = dates(t); if (ds.length) { out.until = out.until || ds[ds.length - 1].iso; continue; } }
+      // "1+1 year": standard plus extended
+      const plus = new RegExp(NUM + '\\s*\\+\\s*' + NUM + '\\s*' + UNIT, 'i').exec(t);
+      if (plus && !PART.test(t)) { const a = toN(plus[1]), b = toN(plus[2]); if (a && b && !out.months) { out.months = toM(a + b, plus[3]); out.extendedMonths = toM(b, plus[3]); out.extended = `${b} ${/^y/i.test(plus[3]) ? (b > 1 ? 'years' : 'year') : 'months'} extended (included)`; } continue; }
+      // every "<n> <unit>", judged within its own clause ("1 year on product, 10 years on compressor")
+      for (const clause of t.split(/[,;]|\band\b/i)) {
+        const re = new RegExp('\\b' + NUM + '\\s*[-–]?\\s*' + UNIT + '\\b', 'gi'); let m;
+        const part = PART.exec(clause), ext = /extend/i.test(clause);
+        while ((m = re.exec(clause))) {
+          const n = toN(m[1]); if (!n || n > 120) continue;
+          const months = toM(n, m[2]); if (months > 180) continue;
+          const unitTxt = `${n} ${/^y/i.test(m[2]) ? (n > 1 ? 'years' : 'year') : (n > 1 ? 'months' : 'month')}`;
+          if (part) { const name = part[1].replace(/\s+/g, ' ').replace(/^./, c => c.toUpperCase()); if (!out.parts.some(p => p.part === name)) out.parts.push({ part: name, months, text: unitTxt }); }
+          else if (ext) { if (!out.extended) out.extended = unitTxt + ' extended'; }
+          else if (!out.months) out.months = months;
+        }
+      }
+    }
+    // "Warranty Period" label with the duration on the line below
+    if (!out.months) { const v = textAfter(o, /warranty\s*(period|term|duration)?/i, { accept: x => new RegExp(NUM + '\\s*' + UNIT, 'i').test(x) }); if (v) { const m = new RegExp(NUM + '\\s*' + UNIT, 'i').exec(v); out.months = toM(toN(m[1]), m[2]); } }
+    return out;
+  }
   /* ---------- per-type extractors ---------- */
   const X = {
     pan(o, T) {
@@ -313,13 +353,16 @@
     home_ins(o, T) { const p = periodDates(o); return { insurer: insurerName(o), policy: idAfter(o, /policy\s*(no|number|#)/i, 6), property: textAfter(o, /(risk\s*location|property|address\s*of\s*premises|location)/i, { accept: v => v.length > 5 }), sum: amountAfter(o, /sum\s*insured/i), premium: amountAfter(o, /premium/i), expiry: (p && p.end) || dateAfter(o, /(expiry|end\s*date|valid\s*till)/i) }; },
     travel(o, T) { const p = periodDates(o); return { insurer: insurerName(o), policy: idAfter(o, /policy\s*(no|number|#)/i, 6), trip: textAfter(o, /(destination|geography|trip)/i, { accept: v => v.length > 2 }), travellers: textAfter(o, /(traveller|insured\s*person|name\s*of\s*insured)/i, { accept: v => /[A-Za-z]{3}/.test(v) }), helpline: phoneAfter(o, /(assistance|emergency|helpline|toll)/i), start: (p && p.start) || dateAfter(o, /(start|departure|from)/i), expiry: (p && p.end) || dateAfter(o, /(end|return|to\b|till)/i) }; },
     warranty(o, T) {
-      const wl = textAfter(o, /warranty/i, { below: false, accept: v => /\d/.test(v) && /(year|yr|month|mo)/i.test(v) }) || ((/warranty[^\n]{0,40}?(\d{1,2})\s*(years?|yrs?|months?)/i.exec(T) || [])[0]);
-      let months = null; if (wl) { const m = /(\d{1,2})\s*(years?|yrs?|months?|mths?)/i.exec(wl); if (m) months = /^y/i.test(m[2]) ? String(+m[1] * 12) : String(+m[1]); }
+      const purchase = dateAfter(o, /(invoice\s*date|bill\s*date|purchase\s*date|date\s*of\s*purchase|date)/i, { notRe: /(valid|till|upto|expir)/i });
+      const w = warrantyTerms(o, T);
+      let expiry = w.until ? { value: w.until, conf: 'high', hint: 'End date printed on the document' } : null;
+      if (!expiry && purchase && w.months) expiry = { value: addMonthsIso(purchase, w.months), conf: 'medium', hint: `Worked out: purchase date + ${w.months % 12 ? w.months + ' months' : (w.months / 12) + (w.months === 12 ? ' year' : ' years')}${w.extendedMonths ? ' (includes extended warranty)' : ''}` };
+      const custom = w.parts.map(pt => ({ l: `${pt.part} warranty`, v: `${pt.text}${purchase ? ` (till ${fmtIso(addMonthsIso(purchase, pt.months))})` : ''}` }));
       const item = textAfter(o, /^(i?tem|product|description|particulars)\b/i, { accept: v => /[A-Za-z]{3}/.test(v) });
       const seller = (() => { for (const l of o.lines.slice(0, 4)) { const t = clean(l.items && l.items[0] ? l.items[0].text : l.text); if (/[A-Za-z]{3}/.test(t) && !/(tax\s*invoice|invoice|bill|receipt|gstin|original)/i.test(t)) return t.replace(/\s*[-–]\s*.*$/, '').replace(/\s*(pvt\.?|private)?\s*(ltd\.?|limited)\s*$/i, ''); } return null; })();
       const brand = textAfter(o, /^brand\b/i, { accept: v => v.length >= 2 && v.length < 25 }) || brandIn((item || '') + '\n' + T);
       const product = item ? clean(item.replace(new RegExp('^' + (brand || '@@').replace(/ /g, '\\s*') + '(?=\\s|\\d)\\s*', 'i'), '')) : null;
-      return { product, brand, model: idAfter(o, /mode[ltI1i]\s*(no|number|name)?/i, 3), serial: idAfter(o, /(serial\s*(no|number)?|s\/n|sr\.?\s*no|imei)/i, 5), seller, invoice: idAfter(o, /(invoice|bill|receipt)\s*(no|number|#)/i, 4), price: amountAfter(o, /(grand\s*total|net\s*amount|total\s*amount|invoice\s*value|amount\s*payable|total)/i), purchase: dateAfter(o, /(invoice\s*date|bill\s*date|date)/i), months, service: phoneAfter(o, /(customer\s*care|service|helpline|toll\s*free|call)/i), _title: product ? (brand ? `${brand} ${product}` : product) : null };
+      return { product, brand, model: idAfter(o, /mode[ltI1i]\s*(no|number|name)?/i, 3), serial: idAfter(o, /(serial\s*(no|number)?|s\/n|sr\.?\s*no|imei)/i, 5), seller, invoice: idAfter(o, /(invoice|bill|receipt)\s*(no|number|#)/i, 4), price: amountAfter(o, /(grand\s*total|net\s*amount|total\s*amount|invoice\s*value|amount\s*payable|total)/i), purchase, months: w.months ? String(w.months) : null, expiry, extended: w.extended, service: phoneAfter(o, /(customer\s*care|service|helpline|toll\s*free|call)/i), _title: product ? (brand ? `${brand} ${product}` : product) : null, _custom: custom };
     },
     bank(o, T) { return { bank: bankName(T), kind: (m => m ? titleCase(m[1]) : null)(/\b(savings|current|salary|nre|nro)\b/i.exec(T)), number: idAfter(o, /(a\/?c|account)\s*(no|number|#)/i, 8), ifsc: ifsc(T), branch: textAfter(o, /branch/i, { accept: v => v.length > 2 && !/code/i.test(v) }), holder: textAfter(o, /(account\s*holder|name)/i, { accept: isNameLike }), nominee: textAfter(o, /nominee/i, { accept: isNameLike }), custid: idAfter(o, /(customer\s*id|cust\s*id|cif|crn)/i, 5) }; },
     fd(o, T) { const r = textAfter(o, /(rate|roi|interest\s*rate)/i, { accept: v => /\d+(\.\d+)?\s*%?/.test(v) }); return { bank: bankName(T), number: idAfter(o, /(fd|deposit|receipt|account)\s*(no|number)/i, 5), amount: amountAfter(o, /(principal|deposit\s*amount|amount\s*deposited|amount)/i), rate: r ? (/(\d+(?:\.\d+)?)/.exec(r) || [])[1] : null, start: dateAfter(o, /(date\s*of\s*deposit|deposit\s*date|start|value\s*date|opened)/i), expiry: dateAfter(o, /maturity\s*date|due\s*date/i), nominee: textAfter(o, /nominee/i, { accept: isNameLike }) }; },
@@ -343,8 +386,10 @@
     const fn = X[type] || X.note;
     const raw = fn(ocr, T) || {};
     const fields = {}; let title = null;
+    let custom = [];
     for (const [k, v] of Object.entries(raw)) {
       if (k === '_title') { title = v; continue; }
+      if (k === '_custom') { custom = v || []; continue; }
       if (v == null || v === '') continue;
       const o = typeof v === 'object' ? v : { value: v, conf: 'medium' };
       if (o.value == null || o.value === '') continue;
@@ -352,7 +397,7 @@
       if (['name', 'father', 'owner', 'holder', 'nominee', 'patient'].includes(k) && o.conf !== 'high') o.value = nameOut(o.value);
       fields[k] = o;
     }
-    return { fields, title, text: T };
+    return { fields, title, custom, text: T };
   }
 
   window.TijoriExtract = { extract, _t: { dates, verhoeff, luhn, panNumber, aadhaarNumber, cardNumber, mrz, ifsc, dlNumber, vehicleReg, amount, phone } };

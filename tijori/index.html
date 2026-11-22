@@ -89,6 +89,9 @@ code{font-family:var(--mono);font-size:.92em;background:#ffffff14;padding:1px 5p
 .upd{position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:250;max-width:560px;margin:0 auto;display:flex;align-items:center;gap:10px;padding:12px 10px 12px 16px;border-radius:16px;background:#262b32;border:1px solid #e6c46e66;color:var(--ink);box-shadow:0 14px 34px rgba(0,0,0,.6);animation:rise .25s}
 .upd small{color:var(--muted)}
 .vbtn.danger{color:#ffb4b6}
+.crow{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr) auto;gap:6px;margin-bottom:8px;align-items:center}
+@media(max-width:480px){.crow{grid-template-columns:1fr auto}.crow .c-l,.crow .c-v{grid-column:1}.crow .mini{grid-column:2;grid-row:1/3}}
+.cadd{display:flex;flex-wrap:wrap;gap:7px}
 .dot{position:absolute;top:9px;right:9px;width:9px;height:9px;border-radius:50%;background:var(--amber);box-shadow:0 0 0 2px #16191d}
 .banner .btn{flex:none}
 .modal .small{font-size:13px;color:var(--muted)}
@@ -326,7 +329,7 @@ body:has(.modal-ov) .toast{bottom:auto;top:calc(16px + env(safe-area-inset-top))
      so the browser blocks every fetch/XHR/WebSocket/beacon.
    ========================================================= */
 
-const APP_VERSION = '2026-11-22.10';   // bump with every release; shown in Settings
+const APP_VERSION = '2026-11-22.11';   // bump with every release; shown in Settings
 const ITER = 600000;
 const DB_NAME = 'tijori';
 const enc = new TextEncoder(), dec = new TextDecoder();
@@ -757,7 +760,8 @@ function folderHTML(it, i) {
 function vItem(id) {
   const it = itemById(id); if (!it) return notFound();
   const t = T[it.type] || T.note; const d = drawerById(it.drawerId) || { name: 'Unfiled', color: '#888888', icon: '📁' }; const di = dueInfo(it);
-  const rows = t.fields.filter(fd => it.fields && it.fields[fd.k]).map(fd => rowHTML(it, fd)).join('');
+  const rows = t.fields.filter(fd => it.fields && it.fields[fd.k]).map(fd => rowHTML(it, fd)).join('') +
+    (it.custom || []).map((c, ix) => `<div class="row"><dt>${esc(c.l)}</dt><dd><span class="val">${esc(c.v)}</span><span class="ra"><button class="mini" data-act="copy-c" data-id="${esc(it.id)}" data-ix="${ix}" aria-label="Copy ${esc(c.l)}">${icon('copy')}</button></span></dd></div>`).join('');
   const atts = it.attachments || [];
   return pageHead(`#/d/${esc(it.drawerId)}`, `<span class="t">${esc(it.title)}</span>`, `<a class="btn sm" href="#/edit/${esc(it.id)}">${icon('edit')} Edit</a>`) +
   `<div class="fo" style="--accent:${safeColor(d.color)}"><span class="ftab">${esc(d.icon)} ${esc(d.name)}</span>
@@ -847,6 +851,7 @@ function vEditor(r) {
       <div class="fld"><label for="f-title">Label</label><input id="f-title" name="title" maxlength="80" value="${esc(it.title)}" placeholder="${esc(t.n)}" autocomplete="off"></div>
       <div class="fld"><label for="f-owner">Belongs to</label><input id="f-owner" name="owner" maxlength="40" value="${esc(it.owner)}" placeholder="Tap a choice below or type a name" autocomplete="off"><div class="ochips" id="ochips">${ownerChips(it.owner)}</div></div>
       ${t.fields.map(fd => `<div class="fld ${fd.t === 'textarea' ? 'full' : ''}"><label for="f_${fd.k}">${esc(fd.l)}</label>${fieldInput(fd, it.fields[fd.k])}${fd.h ? `<div class="hint">${esc(fd.h)}</div>` : ''}</div>`).join('')}
+      <div class="fld full"><label>More details</label><div id="crows">${customRows(it)}</div><div class="cadd" id="cadd">${customAdd(it)}</div><div class="hint">Your own fields, like an installation date or AMC number. They show with the document and are searchable.</div></div>
       <div class="fld full"><label for="f-notes">Notes</label><textarea id="f-notes" name="notes" rows="3" placeholder="Where the original is kept, how to claim, who to call…">${esc(it.notes)}</textarea></div>
     </div>
     <h3 class="sec">Scans & files</h3>
@@ -897,11 +902,32 @@ function scanAttsBtn(it) {
   const n = (it.attachments || []).filter(scannable).length;
   return n ? `<button type="button" class="btn sm" data-act="scan-atts">${icon('clip')} Read attached (${n})</button>` : '';
 }
+/* Custom fields: your own label + value pairs on any document */
+const CUSTOM_SUGGEST = {
+  warranty: ['Installation date', 'Compressor / motor warranty', 'AMC / extended warranty no.', 'Service request no.'],
+  health: ['Room rent limit', 'Co-pay', 'Waiting period'], life: ['Rider', 'Policy bond location'],
+  motor_ins: ['Add-ons'], credit: ['Annual fee', 'Reward programme'], debit: ['Daily limit'],
+  bank: ['Locker no.', 'Debit card (last 4)'], property: ['Builder', 'Society / RWA'], utility: ['Plan'],
+};
+function customRows(it) {
+  return (it.custom || []).map((c, ix) => `<div class="crow"><input class="c-l" value="${esc(c.l)}" placeholder="Field name" maxlength="40" autocomplete="off" aria-label="Field name"><input class="c-v" value="${esc(c.v)}" placeholder="Value" maxlength="300" autocomplete="off" spellcheck="false" aria-label="Value"><button type="button" class="mini" data-act="c-del" data-ix="${ix}" aria-label="Remove this field">${icon('x')}</button></div>`).join('');
+}
+function customAdd(it) {
+  const used = (it.custom || []).map(c => c.l.toLowerCase());
+  const sug = (CUSTOM_SUGGEST[it.type] || []).filter(l => !used.includes(l.toLowerCase()));
+  return sug.map(l => `<button type="button" class="ochip" data-act="c-add" data-l="${esc(l)}">+ ${esc(l)}</button>`).join('') + `<button type="button" class="ochip" data-act="c-add">+ Add a field</button>`;
+}
+function renderCustom(focusLast) {
+  const it = S.draft && S.draft.item; if (!it || !$('#crows')) return;
+  $('#crows').innerHTML = customRows(it); $('#cadd').innerHTML = customAdd(it);
+  if (focusLast) { const r = [...document.querySelectorAll('.crow')].pop(); if (r) (r.querySelector('.c-l').value ? r.querySelector('.c-v') : r.querySelector('.c-l')).focus(); }
+}
 function syncDraft(form) {
   const dr = S.draft; if (!dr || !form) return;
   const fd = new FormData(form); const it = dr.item;
   it.title = fd.get('title') || ''; it.owner = fd.get('owner') || ''; it.notes = fd.get('notes') || '';
   for (const x of T[it.type].fields) it.fields[x.k] = fd.get('f_' + x.k) || '';
+  it.custom = [...form.querySelectorAll('.crow')].map(r => ({ l: r.querySelector('.c-l').value, v: r.querySelector('.c-v').value }));
 }
 function discardDraft() {
   const dr = S.draft; S.draft = null; if (!dr) return;
@@ -917,6 +943,8 @@ async function saveDraft(form) {
     if (x.t === 'card') v = v.replace(/\D/g, '');
     if (v) it.fields[x.k] = v; else delete it.fields[x.k];
   }
+  it.custom = (it.custom || []).map(c => ({ l: String(c.l || '').trim() || 'Detail', v: String(c.v || '').trim() })).filter(c => c.v);
+  if (!it.custom.length) delete it.custom;
   if (it.fields.exp && t.exp === 'exp' && !parseMMYY(it.fields.exp)) { toast('“Valid thru” should look like 08/29'); $('#f_exp') && $('#f_exp').focus(); return; }
   const rescued = rescueTitle(it);
   if (!it.title) it.title = defaultTitle(it);
@@ -1007,7 +1035,7 @@ function searchResults(q) {
   if (!toks.length) items = [...S.vault.items].sort((a, b) => b.updated - a.updated).slice(0, 8);
   else items = S.vault.items.filter(it => {
     const t = T[it.type] || T.note; const d = drawerById(it.drawerId) || {};
-    const hay = [it.title, it.owner, t.n, d.name, it.notes, ...Object.values(it.fields || {}), ...(it.attachments || []).map(a => a.name)].join(' ').toLowerCase();
+    const hay = [it.title, it.owner, t.n, d.name, it.notes, ...Object.values(it.fields || {}), ...(it.custom || []).flatMap(c => [c.l, c.v]), ...(it.attachments || []).map(a => a.name)].join(' ').toLowerCase();
     const hayDigits = hay.replace(/\s/g, '');
     return toks.every(k => hay.includes(k) || hayDigits.includes(k));
   });
@@ -1284,9 +1312,10 @@ function askPdfPassword(name, wrong, aadhaar) {
 }
 const RANK = { high: 3, medium: 2, low: 1 };
 function mergeExtracts(list) {   // per field, keep the most trustworthy reading across all files and pages
-  const out = { fields: {}, title: null };
+  const out = { fields: {}, title: null, custom: [] };
   for (const { ex, from } of list) {
     if (!out.title && ex.title) out.title = ex.title;
+    for (const c of ex.custom || []) if (!out.custom.some(x => x.l.toLowerCase() === c.l.toLowerCase())) out.custom.push({ ...c, from });
     for (const [k, v] of Object.entries(ex.fields)) {
       const cur = out.fields[k];
       if (!cur || (RANK[v.conf] || 0) > (RANK[cur.conf] || 0)) out.fields[k] = { ...v, from };
@@ -1353,8 +1382,12 @@ async function reviewScan(ex, newFiles, texts, { sources = 1, skipped = [] } = {
     const v = fd.t === 'card' ? groupCard(sug.value) : sug.value;
     const cur = String(it.fields[fd.k] || '').trim();
     const same = cur && cur.replace(/\s/g, '').toUpperCase() === String(v).replace(/\s/g, '').toUpperCase();
-    if (!same) rows.push({ k: fd.k, l: fd.l, v, cur, conf: sug.conf, fd, from: sug.from });
+    if (!same) rows.push({ k: fd.k, l: fd.l, v, cur, conf: sug.conf, fd, from: sug.from, hint: sug.hint });
   }
+  (ex.custom || []).forEach((c, ix) => {   // extra details with no field of their own, offered as custom fields
+    const cur = ((it.custom || []).find(x => x.l.toLowerCase() === c.l.toLowerCase()) || {}).v || '';
+    if (cur.trim() !== c.v) rows.push({ k: 'c:' + ix, l: c.l, v: c.v, cur, conf: 'medium', fd: { t: 'text' }, from: c.from, hint: 'Added to More details' });
+  });
   const rawText = texts.map(x => (texts.length > 1 ? `── ${x.where} ──\n` : '') + x.res.lines.map(l => l.items.map(i => i.text).join('   ')).join('\n')).join('\n\n');
   const nf = newFiles.length;
   const attach = (nf ? `<label class="sg-attach"><input type="checkbox" id="sg-att" checked> Also attach ${nf === 1 ? 'this file' : `these ${nf} files`} to the document</label>` : '') +
@@ -1370,14 +1403,16 @@ async function reviewScan(ex, newFiles, texts, { sources = 1, skipped = [] } = {
     return;
   }
   const inputFor = r => r.fd.t === 'date' ? `<input class="sg-v" type="date" data-k="${r.k}" value="${esc(r.v)}">` : `<input class="sg-v ${isMono(r.fd) ? 'mono' : ''}" type="text" data-k="${r.k}" value="${esc(r.v)}" autocomplete="off" spellcheck="false">`;
-  const html = `<p class="small">Found ${rows.length} detail${rows.length > 1 ? 's' : ''}${sources > 1 ? ` across ${sources} files` : ''}. Untick anything wrong, or correct it here.</p><div class="sg-list">${rows.map(r => `<label class="sg"><input type="checkbox" data-c="${r.k}" ${r.conf === 'low' || (r.cur && r.cur !== r.v) ? '' : 'checked'}><span class="sg-l">${esc(r.l)}${r.conf === 'low' ? '<em>please check</em>' : ''}</span>${inputFor(r)}${r.cur ? `<small>Will replace “${esc(r.cur)}”</small>` : ''}${sources > 1 && r.from ? `<small class="src">from ${esc(r.from)}</small>` : ''}</label>`).join('')}</div>${attach}`;
+  const html = `<p class="small">Found ${rows.length} detail${rows.length > 1 ? 's' : ''}${sources > 1 ? ` across ${sources} files` : ''}. Untick anything wrong, or correct it here.</p><div class="sg-list">${rows.map(r => `<label class="sg"><input type="checkbox" data-c="${r.k}" ${r.conf === 'low' || (r.cur && r.cur !== r.v) ? '' : 'checked'}><span class="sg-l">${esc(r.l)}${r.conf === 'low' ? '<em>please check</em>' : ''}</span>${inputFor(r)}${r.cur ? `<small>Will replace “${esc(r.cur)}”</small>` : ''}${r.hint ? `<small class="src">${esc(r.hint)}</small>` : ''}${sources > 1 && r.from ? `<small class="src">from ${esc(r.from)}</small>` : ''}</label>`).join('')}</div>${attach}`;
   const collect = (ov, save) => ({ save,
     vals: [...ov.querySelectorAll('[data-c]')].filter(c => c.checked).map(c => ({ k: c.dataset.c, v: ov.querySelector(`.sg-v[data-k="${c.dataset.c}"]`).value.trim() })).filter(x => x.v),
     att: wantAttach(ov) });
   const picked = await modal({ title: `Scanned ${lcName(t.n)}`, html, actions: [{ label: 'Cancel', value: null }, { label: 'Fill in only', value: ov => collect(ov, false) }, { label: 'Save to cabinet', cls: 'primary', value: ov => collect(ov, true) }], onOpen });
   if (!picked) return;
   const f2 = $('form[data-form=item]'); if (!f2) return;
+  const customPicks = picked.vals.filter(x => x.k.startsWith('c:'));
   for (const { k, v } of picked.vals) {
+    if (k.startsWith('c:')) continue;
     const el = k === '__title' ? f2.elements.namedItem('title') : f2.elements.namedItem('f_' + k); if (!el) continue;
     const fd = t.fields.find(x => x.k === k);
     el.value = fd && fd.t === 'card' ? groupCard(v) : v;
@@ -1386,6 +1421,14 @@ async function reviewScan(ex, newFiles, texts, { sources = 1, skipped = [] } = {
   }
   if (it.type === 'warranty' && !picked.vals.some(x => x.k === 'expiry')) autoWarranty(f2);
   syncDraft(f2);
+  if (customPicks.length) {
+    const cs = S.draft.item.custom = S.draft.item.custom || [];
+    for (const { k, v } of customPicks) {
+      const label = ex.custom[+k.slice(2)].l; const at = cs.findIndex(x => x.l.toLowerCase() === label.toLowerCase());
+      if (at >= 0) cs[at].v = v; else cs.push({ l: label, v });
+    }
+    renderCustom(false);
+  }
   if (picked.att && nf) await addFiles(newFiles);
   if (picked.save) { await saveDraft($('form[data-form=item]')); return; }
   if (picked.vals.length) toast(`Filled ${picked.vals.length} field${picked.vals.length > 1 ? 's' : ''}. Tap Save to cabinet when you’re done.`);
@@ -1459,6 +1502,15 @@ const ACT = {
     if (!c) return toast('Updates work when Tijori is opened from its web address or installed.');
     toast('Checking for updates…'); c.postMessage({ type: 'check-update' });
   },
+  'c-add': el => {
+    if (!S.draft) return; syncDraft($('form[data-form=item]'));
+    S.draft.item.custom = [...(S.draft.item.custom || []), { l: el.dataset.l || '', v: '' }]; renderCustom(true);
+  },
+  'c-del': el => {
+    if (!S.draft) return; syncDraft($('form[data-form=item]'));
+    S.draft.item.custom.splice(+el.dataset.ix, 1); renderCustom(false);
+  },
+  'copy-c': el => { const it = itemById(el.dataset.id); const c = it && (it.custom || [])[+el.dataset.ix]; if (c) return copyText(c.v); },
   'pick-owner': el => {
     const inp = $('#f-owner'); if (!inp) return;
     const same = inp.value.trim().toLowerCase() === el.dataset.o.toLowerCase();
