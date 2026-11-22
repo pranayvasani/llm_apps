@@ -86,6 +86,8 @@ code{font-family:var(--mono);font-size:.92em;background:#ffffff14;padding:1px 5p
 .pdfpage img{display:block;width:100%;height:auto}
 .pdfpage .pn{position:absolute;right:8px;bottom:6px;font:600 11px/1 var(--sans);color:#555;background:#ffffffd9;padding:3px 7px;border-radius:8px}
 .pdf-status{color:#9aa3ad;text-align:center;padding:40px 16px;margin:0}
+.upd{position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:250;max-width:560px;margin:0 auto;display:flex;align-items:center;gap:10px;padding:12px 10px 12px 16px;border-radius:16px;background:#262b32;border:1px solid #e6c46e66;color:var(--ink);box-shadow:0 14px 34px rgba(0,0,0,.6);animation:rise .25s}
+.upd small{color:var(--muted)}
 .dot{position:absolute;top:9px;right:9px;width:9px;height:9px;border-radius:50%;background:var(--amber);box-shadow:0 0 0 2px #16191d}
 .banner .btn{flex:none}
 .modal .small{font-size:13px;color:var(--muted)}
@@ -323,6 +325,7 @@ body:has(.modal-ov) .toast{bottom:auto;top:calc(16px + env(safe-area-inset-top))
      so the browser blocks every fetch/XHR/WebSocket/beacon.
    ========================================================= */
 
+const APP_VERSION = '2026-11-22.9';   // bump with every release; shown in Settings
 const ITER = 600000;
 const DB_NAME = 'tijori';
 const enc = new TextEncoder(), dec = new TextDecoder();
@@ -1034,6 +1037,8 @@ function vSettings() {
   <section class="panel"><h2>Drawers</h2>
     ${sortedDrawers().map(d => `<div class="set-row"><span>${esc(d.icon)} ${esc(d.name)} <small class="muted">· ${counts(d.id)}</small></span><span class="btns"><button class="btn sm" data-act="rename-drawer" data-id="${esc(d.id)}">Edit</button>${counts(d.id) === 0 ? `<button class="btn sm danger" data-act="delete-drawer" data-id="${esc(d.id)}">Remove</button>` : ''}</span></div>`).join('')}
     <div class="set-row"><span class="muted">Need another drawer?</span><button class="btn sm" data-act="new-drawer">${icon('plus')} Add drawer</button></div></section>
+  <section class="panel"><h2>App</h2>
+    <div class="set-row"><span>Version<br><small class="muted">${APP_VERSION}</small></span><button class="btn sm" data-act="check-update">Check for updates</button></div></section>
   <section class="panel"><h2>Storage on this device</h2><div id="storage-info" class="muted" style="font-size:14px">Checking…</div></section>
   <section class="panel"><h2>Erase everything</h2><p>Deletes the encrypted cabinet from this browser. Without a backup it can’t be recovered.</p><button class="btn danger" data-act="wipe">${icon('trash')} Erase this cabinet</button></section>`;
 }
@@ -1423,6 +1428,16 @@ const ACT = {
     if (atts.length) await scanFiles(atts.map(fromAtt));
   },
   'read-atts': el => { S.autoReadAtts = el.dataset.id; location.hash = '#/edit/' + el.dataset.id; },
+  'reload-app': async () => {
+    if (S.draft && !await confirmM('Reload now?', 'Anything you haven’t saved in this form will be lost.', 'Reload', false)) return;
+    location.reload();
+  },
+  'dismiss-upd': () => { const b = $('.upd'); if (b) b.remove(); },
+  'check-update': () => {
+    const c = navigator.serviceWorker && navigator.serviceWorker.controller;
+    if (!c) return toast('Updates work when Tijori is opened from its web address or installed.');
+    toast('Checking for updates…'); c.postMessage({ type: 'check-update' });
+  },
   'pick-owner': el => {
     const inp = $('#f-owner'); if (!inp) return;
     const same = inp.value.trim().toLowerCase() === el.dataset.o.toLowerCase();
@@ -1583,6 +1598,29 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
+/* ---------- updates ---------- */
+function updateReady() {
+  const p1 = $('#p1');
+  if (!S.key && !(p1 && p1.value)) { location.reload(); return; }   // on the lock screen with nothing typed: just load the new version
+  if ($('.upd')) return;
+  const b = document.createElement('div'); b.className = 'upd'; b.setAttribute('role', 'status');
+  b.innerHTML = `<span class="grow"><b>A new version of Tijori is ready</b><br><small>Reload to start using it.</small></span><button class="btn sm primary" data-act="reload-app">Reload</button><button class="ib" data-act="dismiss-upd" aria-label="Later">${icon('x')}</button>`;
+  document.body.appendChild(b);
+}
+
+// Listen before anything else: the service worker may announce a new version while the page is still starting.
+if ('serviceWorker' in navigator) {
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController) updateReady(); });
+  navigator.serviceWorker.addEventListener('message', e => {
+    const t = e.data && e.data.type;
+    if (t === 'tijori-update') updateReady();
+    else if (t === 'tijori-current') toast(`You have the latest version (${APP_VERSION})`);
+    else if (t === 'tijori-update-error') toast('Couldn’t check for updates. Are you online?');
+  });
+  navigator.serviceWorker.startMessages();
+}
+
 /* ---------- boot ---------- */
 (async function init() {
   if (!window.indexedDB || !window.crypto || !crypto.subtle) {
@@ -1597,11 +1635,7 @@ document.addEventListener('visibilitychange', () => {
   showLock();
   if (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
     const l = document.createElement('link'); l.rel = 'manifest'; l.href = 'manifest.json'; document.head.appendChild(l);
-    if ('serviceWorker' in navigator) {
-      const hadController = !!navigator.serviceWorker.controller;
-      navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController) toast('Tijori was updated. Close and reopen it to get the new version.'); });
-      navigator.serviceWorker.register('sw.js').catch(() => {});
-    }
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
   }
 })();
 })();
