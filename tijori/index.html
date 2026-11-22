@@ -69,6 +69,9 @@ code{font-family:var(--mono);font-size:.92em;background:#ffffff14;padding:1px 5p
 .pbar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--brass2),var(--brass1));transition:width .2s}
 .fld input.filled,.fld textarea.filled{animation:filled 2.4s ease-out}
 @keyframes filled{0%,40%{background:#fff0bf;border-color:#c8a24a}}
+.ochips{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}
+.ochip{padding:7px 14px;border-radius:999px;border:1px solid #d6c8a6;background:#fffdf7;color:var(--paper-ink);font-size:14px;font-weight:600;cursor:pointer}
+.ochip.on{background:#2a251d;color:#fff8e6;border-color:#2a251d}
 .dot{position:absolute;top:9px;right:9px;width:9px;height:9px;border-radius:50%;background:var(--amber);box-shadow:0 0 0 2px #16191d}
 .banner .btn{flex:none}
 .modal .small{font-size:13px;color:var(--muted)}
@@ -810,7 +813,6 @@ function vEditor(r) {
     S.draft = dr;
   }
   const it = dr.item, t = T[it.type]; const d = drawerById(it.drawerId) || { color: '#888888' };
-  const owners = [...new Set(S.vault.items.map(i => i.owner).filter(Boolean))].sort();
   const back = dr.isNew ? `#/new/${esc(it.drawerId)}` : `#/i/${esc(it.id)}`;
   return pageHead(back, `<span class="t">${dr.isNew ? 'New' : 'Edit'} ${esc(lcName(t.n))}</span>`) +
   `<div class="fo" style="--accent:${safeColor(d.color)}"><span class="ftab">${t.ic} ${esc(t.n)}</span>
@@ -819,7 +821,7 @@ function vEditor(r) {
       <div class="btns"><label class="btn sm primary">${icon('camera')} Camera<input type="file" accept="image/*" capture="environment" data-change="scan" hidden></label><label class="btn sm">${icon('upload')} From photos<input type="file" accept="image/*" data-change="scan" hidden></label></div></div>
     <div class="grid">
       <div class="fld"><label for="f-title">Label</label><input id="f-title" name="title" maxlength="80" value="${esc(it.title)}" placeholder="${esc(t.n)}" autocomplete="off"></div>
-      <div class="fld"><label for="f-owner">Belongs to</label><input id="f-owner" name="owner" list="owners" maxlength="40" value="${esc(it.owner)}" placeholder="e.g. Me, spouse, child" autocomplete="off"><datalist id="owners">${owners.map(o => `<option value="${esc(o)}">`).join('')}</datalist></div>
+      <div class="fld"><label for="f-owner">Belongs to</label><input id="f-owner" name="owner" maxlength="40" value="${esc(it.owner)}" placeholder="Tap a choice below or type a name" autocomplete="off"><div class="ochips" id="ochips">${ownerChips(it.owner)}</div></div>
       ${t.fields.map(fd => `<div class="fld ${fd.t === 'textarea' ? 'full' : ''}"><label for="f_${fd.k}">${esc(fd.l)}</label>${fieldInput(fd, it.fields[fd.k])}${fd.h ? `<div class="hint">${esc(fd.h)}</div>` : ''}</div>`).join('')}
       <div class="fld full"><label for="f-notes">Notes</label><textarea id="f-notes" name="notes" rows="3" placeholder="Where the original is kept, how to claim, who to call…">${esc(it.notes)}</textarea></div>
     </div>
@@ -836,6 +838,17 @@ function attZone(dr) {
       <label class="btn sm">${icon('clip')} Add photo / PDF<input type="file" accept="image/*,application/pdf" multiple data-change="att" hidden></label>
     </div>
     <div class="hint" id="att-status">Files are encrypted before they’re saved. Photo location data is stripped.</div>`;
+}
+/* "Belongs to" choices: names already used (most used first), then common defaults */
+function ownerChoices() {
+  const n = {}; for (const i of S.vault.items) if (i.owner) n[i.owner] = (n[i.owner] || 0) + 1;
+  const used = Object.keys(n).sort((a, b) => n[b] - n[a] || a.localeCompare(b));
+  const low = used.map(x => x.toLowerCase());
+  return [...used, ...['Me', 'Spouse', 'Child', 'Parent'].filter(d => !low.includes(d.toLowerCase()))].slice(0, 10);
+}
+function ownerChips(cur) {
+  const c = String(cur || '').trim().toLowerCase();
+  return ownerChoices().map(o => `<button type="button" class="ochip ${o.toLowerCase() === c ? 'on' : ''}" data-act="pick-owner" data-o="${esc(o)}">${esc(o)}</button>`).join('');
 }
 function syncDraft(form) {
   const dr = S.draft; if (!dr || !form) return;
@@ -1211,6 +1224,13 @@ const ACT = {
     if (!await confirmM('Remove drawer?', `“${d.name}” is empty and will be removed.`, 'Remove', true)) return;
     S.vault.drawers = S.vault.drawers.filter(x => x.id !== d.id); await saveVault(); render();
   },
+  'pick-owner': el => {
+    const inp = $('#f-owner'); if (!inp) return;
+    const same = inp.value.trim().toLowerCase() === el.dataset.o.toLowerCase();
+    inp.value = same ? '' : el.dataset.o;           // tap again to clear
+    $('#ochips').innerHTML = ownerChips(inp.value);
+    syncDraft(inp.form);
+  },
   'ocr-remove': async () => {
     if (!await confirmM('Remove the scanner download?', `Frees about ${Math.round(OCR_BYTES / 1e6)} MB. Scan to fill downloads it again the next time you use it.`, 'Remove', true)) return;
     await caches.delete('tijori-ocr-v1'); S.vault.settings.ocrOk = false; await saveVault(false); fillScanner(); toast('Scanner download removed');
@@ -1338,6 +1358,7 @@ document.addEventListener('input', e => {
   if (el.dataset.fmt === 'card') { const d = el.value.replace(/\D/g, '').slice(0, 19); el.value = d.replace(/(.{4})/g, '$1 ').trim(); }
   if (el.dataset.fmt === 'mmyy') { let d = el.value.replace(/\D/g, '').slice(0, 4); if (d.length >= 3) d = d.slice(0, 2) + '/' + d.slice(2); el.value = d; }
   const form = el.closest && el.closest('form[data-form=item]');
+  if (el.id === 'f-owner' && $('#ochips')) $('#ochips').innerHTML = ownerChips(el.value);
   if (form && S.draft) {
     if (el.name === 'f_expiry') el.dataset.manual = el.value ? '1' : '';
     if (S.draft.item.type === 'warranty' && (el.name === 'f_purchase' || el.name === 'f_months')) autoWarranty(form);
