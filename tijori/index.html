@@ -78,6 +78,13 @@ code{font-family:var(--mono);font-size:.92em;background:#ffffff14;padding:1px 5p
 .savebar{position:sticky;bottom:calc(10px + env(safe-area-inset-bottom));z-index:5;margin:22px -8px 0;padding:10px;border-radius:14px;background:rgba(247,241,227,.94);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);box-shadow:0 -2px 0 rgba(0,0,0,.04),0 8px 24px rgba(0,0,0,.28)}
 .savebar .btn{flex:1 1 auto}
 .sg small.src{color:var(--muted)}
+.att.is-pdf::after{content:"PDF";position:absolute;left:6px;bottom:6px;z-index:1;font:700 10px/1 var(--sans);letter-spacing:.06em;padding:3px 6px;border-radius:5px;background:#b4232a;color:#fff}
+.viewer-body.pdf{display:block;overflow:auto;-webkit-overflow-scrolling:touch;padding:0}
+.pdfpages{width:100%;max-width:920px;margin:0 auto;padding:8px 8px 48px;display:flex;flex-direction:column;gap:12px}
+.pdfpage{position:relative;width:100%;background:#fff;border-radius:3px;box-shadow:0 2px 12px rgba(0,0,0,.6);overflow:hidden}
+.pdfpage img{display:block;width:100%;height:auto}
+.pdfpage .pn{position:absolute;right:8px;bottom:6px;font:600 11px/1 var(--sans);color:#555;background:#ffffffd9;padding:3px 7px;border-radius:8px}
+.pdf-status{color:#9aa3ad;text-align:center;padding:40px 16px;margin:0}
 .dot{position:absolute;top:9px;right:9px;width:9px;height:9px;border-radius:50%;background:var(--amber);box-shadow:0 0 0 2px #16191d}
 .banner .btn{flex:none}
 .modal .small{font-size:13px;color:var(--muted)}
@@ -266,7 +273,7 @@ select.dark{background:#111418;border:1px solid var(--line);color:var(--ink);bor
 .warnbox{font-size:12.5px;color:#f6d39a;background:#3a2a0f66;border:1px solid #f0a02044;border-radius:10px;padding:10px 12px}
 
 /* ---------- overlays ---------- */
-.modal-ov{position:fixed;inset:0;z-index:100;background:rgba(5,6,8,.68);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);display:grid;place-items:end center;padding:14px;animation:fade .15s}
+.modal-ov{position:fixed;inset:0;z-index:220;background:rgba(5,6,8,.68);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);display:grid;place-items:end center;padding:14px;animation:fade .15s}
 @media(min-width:600px){.modal-ov{place-items:center}}
 .modal{width:100%;max-width:440px;background:#1d2126;border:1px solid #333a43;border-radius:18px;padding:20px;box-shadow:0 30px 60px rgba(0,0,0,.6);animation:rise .22s cubic-bezier(.2,.8,.2,1);margin-bottom:env(safe-area-inset-bottom)}
 .modal h2{margin:0 0 10px;font-size:18px}
@@ -281,7 +288,7 @@ select.dark{background:#111418;border:1px solid var(--line);color:var(--ink);bor
 .swatches{display:flex;gap:9px;flex-wrap:wrap}
 .sw{width:30px;height:30px;border-radius:50%;box-shadow:inset 0 0 0 2px rgba(0,0,0,.25)}
 .sw.on{outline:3px solid #fff;outline-offset:2px}
-.toast{position:fixed;left:50%;bottom:calc(92px + env(safe-area-inset-bottom));transform:translate(-50%,16px);opacity:0;pointer-events:none;background:#f4f6f8;color:#111;padding:10px 16px;border-radius:12px;font-weight:650;font-size:14px;box-shadow:0 10px 30px rgba(0,0,0,.5);transition:.2s;z-index:200;max-width:90vw;text-align:center}
+.toast{position:fixed;left:50%;bottom:calc(92px + env(safe-area-inset-bottom));transform:translate(-50%,16px);opacity:0;pointer-events:none;background:#f4f6f8;color:#111;padding:10px 16px;border-radius:12px;font-weight:650;font-size:14px;box-shadow:0 10px 30px rgba(0,0,0,.5);transition:.2s;z-index:300;max-width:90vw;text-align:center}
 .toast.show{opacity:1;transform:translate(-50%,0)}
 .viewer{position:fixed;inset:0;z-index:150;background:#000;display:flex;flex-direction:column;animation:fade .15s}
 .viewer-bar{display:flex;align-items:center;gap:6px;padding:calc(8px + env(safe-area-inset-top)) 10px 8px 16px;color:#fff}
@@ -779,7 +786,7 @@ function cardHTML(it) {
     <div class="pc-bot"><div><small>Card holder</small>${esc(F.holder || '')}</div><div><small>Valid thru</small>${esc(F.exp || '--/--')}</div><div class="pc-net">${esc(detectNet(num))}</div></div></div>`;
 }
 function attHTML(a, editable) {
-  return `<button type="button" class="att" data-act="view-att" data-id="${esc(a.id)}" aria-label="Open ${esc(a.name)}">${a.thumb ? `<img data-thumb="${esc(a.id)}:t" alt="">` : `${icon('file')}<span class="nm">${esc(a.name)}</span>`}${editable ? `<span class="rm" data-act="rm-att" data-id="${esc(a.id)}" role="button" aria-label="Remove ${esc(a.name)}">${icon('x')}</span>` : ''}</button>`;
+  return `<button type="button" class="att${isPdf(a.mime, a.name) ? ' is-pdf' : ''}" data-act="view-att" data-id="${esc(a.id)}" aria-label="Open ${esc(a.name)}">${a.thumb ? `<img data-thumb="${esc(a.id)}:t" alt="">` : `${icon('file')}<span class="nm">${esc(a.name)}</span>`}${editable ? `<span class="rm" data-act="rm-att" data-id="${esc(a.id)}" role="button" aria-label="Remove ${esc(a.name)}">${icon('x')}</span>` : ''}</button>`;
 }
 
 function vPickDrawer() {
@@ -934,6 +941,7 @@ async function prepImage(file) {
     return { main: new Uint8Array(await file.arrayBuffer()), thumb: null, mime: file.type || 'application/octet-stream', renamed: false };
   }
 }
+const pdfJobs = [];
 async function addFiles(files) {
   const dr = S.draft; if (!dr || !files.length) return;
   const form = $('form[data-form=item]'); syncDraft(form);
@@ -944,11 +952,16 @@ async function addFiles(files) {
     const id = uid(); let name = file.name || 'scan.jpg', main, thumb = null, mime = file.type || 'application/octet-stream';
     if (mime.startsWith('image/')) { const p = await prepImage(file); main = p.main; thumb = p.thumb; mime = p.mime; if (p.renamed) name = name.replace(/\.[^.]+$/, '') + '.jpg'; }
     else main = new Uint8Array(await file.arrayBuffer());
+    if (isPdf(mime, name)) mime = 'application/pdf';
     await blobSet(id, await encryptBytes(S.key, main));
     if (thumb) await blobSet(id + ':t', await encryptBytes(S.key, thumb));
-    dr.item.attachments.push({ id, name, mime, size: main.length, thumb: !!thumb, added: Date.now() });
+    const att = { id, name, mime, size: main.length, thumb: !!thumb, added: Date.now() };
+    if (pwForFile.has(file)) att.pw = pwForFile.get(file);
+    dr.item.attachments.push(att);
     dr.added.add(id);
+    if (mime === 'application/pdf') pdfJobs.push(() => quietPdfThumb(id, main, att.pw));
   }
+  setTimeout(() => { const jobs = pdfJobs.splice(0); (async () => { for (const j of jobs) await j(); })(); }, 0);
   const z = $('#att-zone'); if (z) { z.innerHTML = attZone(dr); loadThumbs(z); }
   const sb = $('#scan-atts'); if (sb) sb.innerHTML = scanAttsBtn(dr.item);
 }
@@ -1071,18 +1084,90 @@ async function openViewer(a) {
   const file = await attFile(a, it && (it.title || (T[it.type] || T.note).n), idx, list.length);
   if (!file) return toast('Couldn’t open that file');
   const url = URL.createObjectURL(file); S.urls.add(url);
-  const isImg = a.mime.startsWith('image/'); const nm = esc(file.name);
+  const isImg = a.mime.startsWith('image/'), pdf = isPdf(a.mime, a.name); const nm = esc(file.name);
   const ov = document.createElement('div'); ov.className = 'viewer'; ov.setAttribute('role', 'dialog');
-  ov.innerHTML = `<div class="viewer-bar"><span>${nm} · ${fmtSize(a.size)}</span><button class="vbtn" data-share aria-label="Share">${icon('share')}</button><a class="vbtn" href="${url}" download="${nm}" aria-label="Save a copy">${icon('download')}</a><button class="vbtn" data-close aria-label="Close">${icon('x')}</button></div>
-    <div class="viewer-body">${isImg ? `<img src="${url}" alt="${nm}">` : `<div class="viewer-file">${icon('file')}<p>${nm}</p><p class="muted">${fmtSize(a.size)}</p><a class="btn primary" href="${url}" target="_blank" rel="noopener">${icon('ext')} Open</a> <button class="btn" data-share>${icon('share')} Share</button> <a class="btn" href="${url}" download="${nm}">${icon('download')} Save copy</a></div>`}</div>`;
-  const close = () => { ov.remove(); document.removeEventListener('keydown', onKey); };
+  ov.innerHTML = `<div class="viewer-bar"><span id="vw-title">${nm} · ${fmtSize(a.size)}</span><button class="vbtn" data-share aria-label="Share">${icon('share')}</button><a class="vbtn" href="${url}" download="${nm}" aria-label="Save a copy">${icon('download')}</a><button class="vbtn" data-close aria-label="Close">${icon('x')}</button></div>
+    ${isImg ? `<div class="viewer-body"><img src="${url}" alt="${nm}"></div>`
+      : pdf ? `<div class="viewer-body pdf"><div class="pdfpages"><p class="pdf-status">Opening…</p></div></div>`
+      : `<div class="viewer-body"><div class="viewer-file">${icon('file')}<p>${nm}</p><p class="muted">${fmtSize(a.size)}. Tijori can’t show this type of file. Opening it in another app may leave an unprotected copy on your phone.</p><a class="btn" href="${url}" target="_blank" rel="noopener">${icon('ext')} Open in another app</a></div></div>`}`;
+  const st = { closed: false, cleanup: [] };
+  const close = () => { st.closed = true; st.cleanup.forEach(f => { try { f(); } catch {} }); ov.remove(); document.removeEventListener('keydown', onKey); };
   const onKey = e => { if (e.key === 'Escape') close(); };
   ov.addEventListener('click', e => {
     if (e.target.closest('[data-share]')) { shareFiles([file], file.name); return; }
-    if (e.target.closest('[data-close]') || e.target.classList.contains('viewer-body')) close();
+    if (e.target.closest('[data-close]') || (!pdf && e.target.classList.contains('viewer-body'))) close();
   });
   document.addEventListener('keydown', onKey);
   document.body.appendChild(ov);
+  if (pdf) showPdf(ov, a, file, it, st);
+}
+const aadhaarish = (name, it) => /aadh?aar/i.test(name || '') || (it && it.type === 'aadhaar');
+async function showPdf(ov, a, file, it, st) {
+  const box = ov.querySelector('.pdfpages');
+  const fail = msg => { if (!st.closed) box.innerHTML = `<div class="viewer-file">${icon('file')}<p>${esc(msg)}</p><p class="muted">You can still share it or save a copy with the buttons at the top.</p></div>`; };
+  if (!/^https?:$/.test(location.protocol)) return fail('PDF preview works when Tijori is opened from its web address or installed.');
+  try {
+    await ensurePdfReader();
+    const doc = await window.TijoriPDF.open(new Uint8Array(await file.arrayBuffer()), ocrBase(), wrong => askPdfPassword(file.name, wrong, aadhaarish(file.name, it)), a.pw);
+    st.cleanup.push(() => window.TijoriPDF.close(doc));
+    if (st.closed) return;
+    if (doc.__password && doc.__password !== a.pw && doc.__remember) await rememberPdfPassword(a.id, doc.__password);
+    const pages = Math.min(doc.numPages, 60), t = ov.querySelector('#vw-title');
+    if (t) t.textContent = `${file.name} · ${doc.numPages} page${doc.numPages > 1 ? 's' : ''}`;
+    const first = await window.TijoriPDF.pageSize(doc, 1);
+    box.innerHTML = Array.from({ length: pages }, (_, k) => `<div class="pdfpage" data-n="${k + 1}" style="aspect-ratio:${first.w}/${first.h}"><span class="pn">${k + 1} / ${doc.numPages}</span></div>`).join('') +
+      (doc.numPages > pages ? `<p class="pdf-status">Showing the first ${pages} pages. Save a copy to see the rest.</p>` : '');
+    const dpr = Math.min(2.5, window.devicePixelRatio || 1);
+    const draw = async el => {   // render a page once it scrolls near the screen
+      if (el.dataset.done || st.closed) return; el.dataset.done = '1';
+      const n = +el.dataset.n;
+      const c = await window.TijoriPDF.renderPage(doc, n, Math.min(box.clientWidth || 400, 920), dpr);
+      if (st.closed) return;
+      el.style.aspectRatio = `${c.width}/${c.height}`;
+      const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.92)); const u = URL.createObjectURL(blob); S.urls.add(u);
+      const img = new Image(); img.alt = `Page ${n}`; img.src = u; el.prepend(img);
+      if (n === 1 && !a.thumb) pdfThumb(a.id, c).catch(() => {});
+    };
+    const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) draw(e.target).catch(err => console.error(err)); }), { root: ov.querySelector('.viewer-body'), rootMargin: '800px 0px' });
+    box.querySelectorAll('.pdfpage').forEach(el => io.observe(el));
+    st.cleanup.push(() => io.disconnect());
+  } catch (e) {
+    console.error(e);
+    fail(e.cancelled ? 'This PDF is password-protected. Close and tap it again to enter the password.' : (e.message || 'Couldn’t show this PDF.'));
+  }
+}
+function attRefs(id) {   // the attachment in the saved cabinet and in an open edit, if any
+  const out = [];
+  for (const i of S.vault.items) for (const x of i.attachments || []) if (x.id === id) out.push(x);
+  if (S.draft) for (const x of S.draft.item.attachments) if (x.id === id) out.push(x);
+  return out;
+}
+async function rememberPdfPassword(id, pw) {
+  const refs = attRefs(id); if (!refs.length) return;
+  refs.forEach(x => { x.pw = pw; }); await saveVault(false);
+}
+async function pdfThumb(id, canvas) {   // first page as the tile picture, stored encrypted like photo thumbnails
+  const s = Math.min(1, 420 / Math.max(canvas.width, canvas.height)); const c = document.createElement('canvas');
+  c.width = Math.round(canvas.width * s); c.height = Math.round(canvas.height * s);
+  c.getContext('2d').drawImage(canvas, 0, 0, c.width, c.height);
+  const b = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.75));
+  await blobSet(id + ':t', await encryptBytes(S.key, new Uint8Array(await b.arrayBuffer())));
+  const refs = attRefs(id); refs.forEach(x => { x.thumb = true; });
+  if (refs.length) await saveVault(false);
+  document.querySelectorAll(`.att[data-id="${id}"]`).forEach(t => {   // update tiles already on screen
+    if (t.querySelector('img')) return;
+    const a = refs[0] || { id, name: '', mime: 'application/pdf', thumb: true };
+    const tmp = document.createElement('div'); tmp.innerHTML = attHTML(a, !!t.querySelector('.rm')); const n = tmp.firstElementChild; t.replaceWith(n); loadThumbs(n.parentElement || document);
+  });
+}
+async function quietPdfThumb(id, bytes, pw) {   // best effort when a PDF is attached: never prompts, never blocks
+  try {
+    if (!/^https?:$/.test(location.protocol)) return;
+    await ensurePdfReader();
+    const doc = await window.TijoriPDF.open(bytes, ocrBase(), () => null, pw);
+    const c = await window.TijoriPDF.renderPage(doc, 1, 420, 1); await window.TijoriPDF.close(doc);
+    await pdfThumb(id, c);
+  } catch {}
 }
 function icsEsc(s) { return String(s).replace(/\\/g, '\\\\').replace(/([,;])/g, '\\$1').replace(/\r?\n/g, '\\n'); }
 function icsEvent(it) {
@@ -1143,7 +1228,8 @@ function progressPanel(title) {
 const isPdf = (mime, name) => mime === 'application/pdf' || /\.pdf$/i.test(name || '');
 const scannable = a => (a.mime || '').startsWith('image/') || isPdf(a.mime, a.name);
 const fromFile = f => ({ name: f.name || 'photo.jpg', mime: f.type || (isPdf('', f.name) ? 'application/pdf' : 'image/jpeg'), bytes: async () => new Uint8Array(await f.arrayBuffer()), file: f });
-const fromAtt = a => ({ name: a.name, mime: a.mime, bytes: async () => { const rec = await blobGet(a.id); if (!rec) throw new Error(`${a.name} is missing`); return decryptBytes(S.key, rec); } });
+const pwForFile = new WeakMap();   // passwords typed while scanning new PDFs, applied when they're attached
+const fromAtt = a => ({ name: a.name, mime: a.mime, att: a, pw: a.pw, bytes: async () => { const rec = await blobGet(a.id); if (!rec) throw new Error(`${a.name} is missing`); return decryptBytes(S.key, rec); } });
 
 async function ensureReader(pp) {   // OCR engine: ask once, download once
   if (!S.vault.settings.ocrOk) {
@@ -1157,10 +1243,13 @@ async function ensurePdfReader() {
   if (!window.TijoriPDF) await loadScript(ocrBase() + 'pdf-read.js');
   if (!window.TijoriExtract) await loadScript(ocrBase() + 'extract.js');
 }
-function askPdfPassword(name, wrong) {
+function askPdfPassword(name, wrong, aadhaar) {
+  const hint = aadhaar || /aadh?aar/i.test(name || '')
+    ? 'e-Aadhaar PDFs use the first 4 letters of your name in capitals followed by your year of birth, like ROHA1986.'
+    : 'Insurance and bank PDFs often use your date of birth (like DDMMYYYY) or part of your PAN or name.';
   return modal({ title: 'This PDF is password-protected',
-    html: `<p>${wrong ? '<b>That password didn’t work.</b> ' : ''}Enter the password for “${esc(name)}”. It’s used only to open the file on this phone.</p><p class="small">Insurance and bank PDFs often use your date of birth (like DDMMYYYY) or part of your PAN or name.</p><div class="mf"><input type="password" id="pdf-pw" autocomplete="off"></div>`,
-    actions: [{ label: 'Skip this file', value: null }, { label: 'Open', cls: 'primary', value: ov => ov.querySelector('#pdf-pw').value || undefined }] });
+    html: `<p>${wrong ? '<b>That password didn’t work.</b> ' : ''}Enter the password for “${esc(name)}”. It’s used only to open the file on this phone.</p><p class="small">${hint}</p><div class="mf"><input type="password" id="pdf-pw" autocomplete="off" autocapitalize="characters"></div><label class="sg-attach"><input type="checkbox" id="pdf-rem" checked> Remember it for this file (kept encrypted in your cabinet)</label>`,
+    actions: [{ label: 'Skip', value: null }, { label: 'Open', cls: 'primary', value: ov => { const pw = ov.querySelector('#pdf-pw').value; return pw ? { pw, remember: ov.querySelector('#pdf-rem').checked } : undefined; } }] });
 }
 const RANK = { high: 3, medium: 2, low: 1 };
 function mergeExtracts(list) {   // per field, keep the most trustworthy reading across all files and pages
@@ -1198,8 +1287,9 @@ async function scanFiles(sources) {
       if (isPdf(s.mime, s.name)) {
         await ensurePdfReader();
         let doc;
-        try { doc = await window.TijoriPDF.open(await s.bytes(), ocrBase(), wrong => askPdfPassword(s.name, wrong)); }
+        try { doc = await window.TijoriPDF.open(await s.bytes(), ocrBase(), wrong => askPdfPassword(s.name, wrong, type === 'aadhaar'), s.pw); }
         catch (e) { if (e.cancelled) { skipped.push(`${s.name} (no password)`); continue; } throw e; }
+        if (doc.__password && doc.__remember && doc.__password !== s.pw) { if (s.att) await rememberPdfPassword(s.att.id, doc.__password); else if (s.file) pwForFile.set(s.file, doc.__password); }
         for await (const pg of window.TijoriPDF.pages(doc)) {
           if (pp.cancelled) break;
           const where = doc.numPages > 1 ? `${s.name}, page ${pg.page}` : s.name;
