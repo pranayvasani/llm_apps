@@ -32,7 +32,8 @@
   }
   const firstDate = s => (dates(s)[0] || {}).iso || null;
   function amount(s) {
-    const m = /(?:rs\.?|inr|₹)?\s*([0-9]{1,3}(?:,[0-9]{2,3})+(?:\.[0-9]{1,2})?|[0-9]{3,}(?:\.[0-9]{1,2})?)/i.exec(String(s || ''));
+    s = String(s || '').replace(/(\d)[.\s](?=\d{3}(?:[^\d]|$))/g, '$1,');   // OCR often reads 24,318 as 24.318 or 24 318
+    const m = /(?:rs\.?|inr|₹)?\s*([0-9]{1,3}(?:,[0-9]{2,3})+(?:\.[0-9]{1,2})?|[0-9]{3,}(?:\.[0-9]{1,2})?)/i.exec(s);
     return m ? m[1] : null;
   }
   function phone(s) {
@@ -71,7 +72,12 @@
         if (!m || (notRe && notRe.test(t))) continue;
         const rest = stripSep(t.slice(m.index + m[0].length));
         if (rest && accept(rest)) return rest;
-        const next = items.slice(ii + 1).map(x => x.text).join(' ');
+        // "Plan | Policy Start | Policy Expiry" with values underneath: the neighbours are labels too, not values
+        const labelish = x => !/\d/.test(x) && !/:/.test(x) && x.trim().split(/\s+/).length <= 4;
+        const LABEL_WORD = /\b(date|issue|expiry|valid\w*|start|end|from|till|upto|number|no|name|plan|premium|sum|amount|type|class|group|donor|code|period|policy|insured|nominee|branch|ifsc|status|birth|dob|doi|gender|sex|blood|organ|mode|term|tenure|cover)\b/i;
+        const headerRow = items.length >= 2 && items.every(x => labelish(x.text)) && (items.length >= 3 || items.every(x => LABEL_WORD.test(x.text))) &&
+          L[li + 1] && (L[li + 1].items || []).some(x => /\d|[A-Za-z]{2}/.test(x.text));
+        const next = headerRow ? '' : items.slice(ii + 1).map(x => x.text).join(' ');
         const nv = stripSep(next);
         if (nv && accept(nv)) return nv;
         if (below && L[li + 1]) {
@@ -234,7 +240,8 @@
     id_other(o, T) { return { number: idAfter(o, /(id\s*no|number|no\.)/i), name: textAfter(o, /name/i, { accept: isNameLike }), expiry: dateAfter(o, /(valid|expiry|expires)/i) }; },
     dl(o, T) {
       const cov = textAfter(o, /(cov|class(es)?\s*of\s*vehicle|vehicle\s*class|authori[sz]ation\s*to\s*drive)/i, { accept: v => /\b(LMV|MCWG|MCWOG|HMV|HGMV|HPMV|MGV|TRANS|LMV-?NT|INVCRG|e-?RICKSHAW|MC\s?50CC|3W)\b/i.test(v) });
-      const classes = (cov ? cov : T).toUpperCase().match(/\b(LMV-?NT|LMV-?TR|LMV|MCWG|MCWOG|HMV|HGMV|HPMV|MGV|TRANS|INVCRG|E-?RICKSHAW|MC\s?50CC)\b/g);
+      // classes are often listed one per line under the label, so collect them from the whole card
+      const classes = ((cov || '') + '\n' + T).toUpperCase().match(/\b(LMV-?NT|LMV-?TR|LMV|MCWG|MCWOG|HMV|HGMV|HPMV|MGV|TRANS|INVCRG|E-?RICKSHAW|MC\s?50CC)\b/g);
       let issue = dateAfter(o, /(date\s*of\s*first\s*issue|first\s*issue|date\s*of\s*issue|issue\s*date|issued\s*on|\bdoi\b)/i);
       let expiry = dateAfter(o, /(valid(ity)?\s*\(?\s*n\.?\s*t\b|non[\s-]*transport|valid\s*till|valid\s*up\s*to|valid\s*upto|validity|\bvalid\b)/i);
       const ds = [...new Set(dates(T).map(d => d.iso))].sort();

@@ -1,9 +1,9 @@
 // Tijori service worker: keeps the app's own files cached so it opens offline.
 // It never touches your documents (those live encrypted in IndexedDB) and only fetches this site's own files.
 // App files: served from cache instantly and refreshed in the background, so updates land on the next launch.
-// Scan-to-fill engine and models (ocr/*.wasm|onnx|ort|txt, ~36 MB): downloaded only on first scan, then served
+// Scan-to-fill engine, models and PDF decoders (ocr/**/*.wasm|onnx|ort|txt, ~37 MB): downloaded only on first scan, then served
 // from their own cache without re-downloading.
-const CACHE = 'tijori-v3';
+const CACHE = 'tijori-v4';
 const OCR_CACHE = 'tijori-ocr-v1';
 const SHELL = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 self.addEventListener('install', e => {
@@ -16,7 +16,7 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const u = new URL(e.request.url);
   if (e.request.method !== 'GET' || u.origin !== location.origin) return;
-  if (/\/ocr\/[^/]+\.(wasm|onnx|ort|txt)$/.test(u.pathname)) {
+  if (/\/ocr\/.*\.(wasm|onnx|ort|txt)$/.test(u.pathname)) {
     e.respondWith(caches.open(OCR_CACHE).then(async c => (await c.match(e.request, { ignoreSearch: true })) ||
       fetch(e.request).then(res => { if (res.ok) c.put(e.request, res.clone()); return res; })));
     return;
