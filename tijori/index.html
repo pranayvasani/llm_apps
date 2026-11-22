@@ -3,8 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<!-- connect-src 'none' => the browser refuses every network request this page could make. Your data has nowhere to go. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data: blob:; manifest-src 'self'; worker-src 'self'; connect-src 'none'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'">
+<!-- Security policy: nothing may be sent anywhere. The only network reads allowed are this app's own
+     Scan-to-fill engine files in ./ocr/ (narrowed by the second policy added just below). -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src 'self' data: blob:; manifest-src 'self'; worker-src 'self'; connect-src 'self'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'">
+<script>
+/* Second, stricter policy: fetches may only go to this app's own ocr/ folder (or nowhere, when opened as a local file).
+   Both policies apply, so the effective rule is the narrower one. */
+(function () {
+  var m = document.createElement('meta'); m.httpEquiv = 'Content-Security-Policy';
+  m.content = /^https?:$/.test(location.protocol) ? 'connect-src ' + location.origin + location.pathname.replace(/[^\/]*$/, '') + 'ocr/' : "connect-src 'none'";
+  document.head.appendChild(m);
+})();
+</script>
 <meta name="referrer" content="no-referrer">
 <meta name="theme-color" content="#16191d">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -40,6 +50,25 @@ code{font-family:var(--mono);font-size:.92em;background:#ffffff14;padding:1px 5p
 .ib{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;position:relative;color:#cfd5dc;text-decoration:none}
 .ib:hover{background:#ffffff10}
 .badge{position:absolute;top:4px;right:3px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--red);color:#fff;font-size:11px;font-weight:750;display:grid;place-items:center}
+.scanbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:-4px 0 18px;padding:12px 14px;border-radius:12px;background:linear-gradient(180deg,#fff8e6,#f6ebcd);border:1px solid #e3cf9b}
+.scanbar .sb-t{flex:1;min-width:190px}
+.scanbar b{display:block;font-size:14.5px}
+.scanbar small{display:block;color:var(--paper-muted);font-size:12.5px;line-height:1.35;margin-top:2px}
+.scanbar .btns{justify-content:flex-start}
+.sg-list{display:grid;gap:8px;max-height:52vh;overflow:auto;margin:4px -4px 0;padding:2px 4px}
+.sg{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;align-items:center;padding:9px 10px;border-radius:10px;background:#ffffff08;border:1px solid #2f353d}
+.sg input[type=checkbox]{width:19px;height:19px;accent-color:#e6c46e;grid-row:span 2}
+.sg .sg-l{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:700}
+.sg .sg-l em{font-style:normal;color:#f6c560;text-transform:none;letter-spacing:0;margin-left:6px}
+.sg .sg-v{width:100%;padding:8px 10px;border-radius:8px;border:1px solid #39404a;background:#0f1114;color:var(--ink);font:15px var(--sans)}
+.sg .sg-v.mono{font-family:var(--mono)}
+.sg small{grid-column:2;color:#f6c560;font-size:12px}
+.sg-attach{display:flex;gap:10px;align-items:center;margin-top:12px;font-size:14px;color:#c9d0d8}
+.sg-attach input{width:18px;height:18px;accent-color:#e6c46e}
+.pbar{height:8px;border-radius:4px;background:#2a2f36;overflow:hidden;margin:6px 0 4px}
+.pbar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--brass2),var(--brass1));transition:width .2s}
+.fld input.filled,.fld textarea.filled{animation:filled 2.4s ease-out}
+@keyframes filled{0%,40%{background:#fff0bf;border-color:#c8a24a}}
 .dot{position:absolute;top:9px;right:9px;width:9px;height:9px;border-radius:50%;background:var(--amber);box-shadow:0 0 0 2px #16191d}
 .banner .btn{flex:none}
 .modal .small{font-size:13px;color:var(--muted)}
@@ -470,6 +499,7 @@ const sortedDrawers = () => [...S.vault.drawers].sort((a, b) => (a.order ?? 0) -
 const drawerById = id => S.vault.drawers.find(d => d.id === id);
 const itemById = id => S.vault.items.find(i => i.id === id);
 function drawerTypes(d) { const def = DEFAULT_DRAWERS.find(x => x.id === d.id); return def ? [...def.types, 'note'] : Object.keys(T); }
+const lcName = n => /^Aadhaar/.test(n) ? n : n.replace(/^([A-Z])(?=[a-z])/, c => c.toLowerCase());
 const isSecret = fd => fd && (fd.t === 'secret' || fd.t === 'card');
 const isMono = fd => fd && (fd.mono || fd.t === 'card' || fd.t === 'secret' || fd.t === 'mmyy');
 function groupCard(v) { return String(v).replace(/\D/g, '').replace(/(.{4})/g, '$1 ').trim(); }
@@ -583,7 +613,7 @@ function showLock(msg) {
       </form>`}
     <ul class="promises">
       <li>${icon('shield')} AES-256 encrypted, stored only on this device</li>
-      <li>${icon('wifiOff')} Network access blocked by the app itself</li>
+      <li>${icon('wifiOff')} Nothing is ever uploaded. The app blocks it.</li>
       <li>${icon('lock')} No account, no cloud, no tracking</li>
     </ul></div></main>`;
   setTimeout(() => { const p = $('#p1'); p && p.focus(); }, 50);
@@ -657,7 +687,7 @@ function vHome() {
     banners += `<a class="banner warn" href="#/due">${icon('bell')}<span class="grow"><b>${att.length} ${att.length > 1 ? 'documents need' : 'document needs'} attention</b><br><small>${ex ? `${ex} expired · ` : ''}renewals due within 30 days</small></span>${icon('chev')}</a>`;
   }
   banners += backupBanner(false);
-  return `<div class="privacy-pill">${icon('shield')} Encrypted · on this device only · network blocked</div>${banners}
+  return `<div class="privacy-pill">${icon('shield')} Encrypted · on this device only · no uploads</div>${banners}
     <div class="cabinet"><div class="cab-top"><span class="keyhole"></span></div><div class="cab-body">${sortedDrawers().map(drawerHTML).join('')}</div><div class="cab-base"></div></div>
     <button class="add-drawer" data-act="new-drawer">${icon('plus')} Add a drawer</button>
     <a class="fab" href="#/new">${icon('plus')} Add document</a>`;
@@ -782,9 +812,11 @@ function vEditor(r) {
   const it = dr.item, t = T[it.type]; const d = drawerById(it.drawerId) || { color: '#888888' };
   const owners = [...new Set(S.vault.items.map(i => i.owner).filter(Boolean))].sort();
   const back = dr.isNew ? `#/new/${esc(it.drawerId)}` : `#/i/${esc(it.id)}`;
-  return pageHead(back, `<span class="t">${dr.isNew ? 'New' : 'Edit'} ${esc(t.n.toLowerCase())}</span>`) +
+  return pageHead(back, `<span class="t">${dr.isNew ? 'New' : 'Edit'} ${esc(lcName(t.n))}</span>`) +
   `<div class="fo" style="--accent:${safeColor(d.color)}"><span class="ftab">${t.ic} ${esc(t.n)}</span>
    <form class="sheet form" data-form="item" autocomplete="off" novalidate>
+    <div class="scanbar"><div class="sb-t"><b>${icon('camera')} Scan to fill</b><small>Take a photo of the ${esc(lcName(t.n))}. It’s read on this phone, and you check every value before it’s filled in.</small></div>
+      <div class="btns"><label class="btn sm primary">${icon('camera')} Camera<input type="file" accept="image/*" capture="environment" data-change="scan" hidden></label><label class="btn sm">${icon('upload')} From photos<input type="file" accept="image/*" data-change="scan" hidden></label></div></div>
     <div class="grid">
       <div class="fld"><label for="f-title">Label</label><input id="f-title" name="title" maxlength="80" value="${esc(it.title)}" placeholder="${esc(t.n)}" autocomplete="off"></div>
       <div class="fld"><label for="f-owner">Belongs to</label><input id="f-owner" name="owner" list="owners" maxlength="40" value="${esc(it.owner)}" placeholder="e.g. Me, spouse, child" autocomplete="off"><datalist id="owners">${owners.map(o => `<option value="${esc(o)}">`).join('')}</datalist></div>
@@ -828,7 +860,7 @@ async function saveDraft(form) {
   if (it.fields.exp && t.exp === 'exp' && !parseMMYY(it.fields.exp)) { toast('“Valid thru” should look like 08/29'); $('#f_exp') && $('#f_exp').focus(); return; }
   if (!it.title) {
     const kf = t.fields.find(x => x.k === t.key); const kv = it.fields[t.key];
-    it.title = t.card && it.fields.bank ? `${it.fields.bank} ${t.n.toLowerCase()}` : t.n + (it.owner ? ` · ${it.owner}` : kv && !isSecret(kf) ? ` ${kv}` : '');
+    it.title = t.card && it.fields.bank ? `${it.fields.bank} ${lcName(t.n)}` : t.n + (it.owner ? ` · ${it.owner}` : kv && !isSecret(kf) ? ` ${kv}` : '');
   }
   const now = Date.now(); if (dr.isNew) it.created = now; it.updated = now;
   const V = S.vault; const idx = V.items.findIndex(x => x.id === it.id);
@@ -926,7 +958,10 @@ function vSettings() {
   return pageHead('#/', '<span class="t">Settings & backup</span>') + `
   <section class="panel"><h2>${icon('shield')} How your data is protected</h2>
     <p>Everything is encrypted with AES-256-GCM. The key comes from your passphrase (PBKDF2-SHA-256, ${S.meta.iter.toLocaleString('en-IN')} rounds) and exists only in memory while the cabinet is unlocked. The encrypted data lives in this browser’s storage on this device.</p>
-    <p>The page’s security policy sets <code>connect-src 'none'</code>, which makes the browser refuse every network request the app could make. There’s no server and no account.</p></section>
+    <p>The page’s security policy stops the browser from sending anything anywhere. The only thing the app may download is its own Scan to fill engine, from the <code>ocr/</code> folder of this app’s site. There’s no server and no account.</p></section>
+  <section class="panel"><h2>${icon('camera')} Scan to fill</h2>
+    <p>Reads document photos on this device using PaddleOCR. Photos are never uploaded.</p>
+    <div class="set-row"><span id="ocr-status" class="muted">Checking…</span><span class="btns" id="ocr-btns"></span></div></section>
   <section class="panel"><h2>Security</h2>
     <div class="set-row"><span>Auto-lock after inactivity</span><select class="dark" data-change="autolock" aria-label="Auto-lock minutes">${[1, 2, 5, 10, 15, 30].map(m => `<option value="${m}" ${+V.settings.autoLock === m ? 'selected' : ''}>${m} min</option>`).join('')}</select></div>
     <div class="set-row"><span>Passphrase</span><button class="btn sm" data-act="change-pass">Change</button></div></section>
@@ -940,6 +975,12 @@ function vSettings() {
     <div class="set-row"><span class="muted">Need another drawer?</span><button class="btn sm" data-act="new-drawer">${icon('plus')} Add drawer</button></div></section>
   <section class="panel"><h2>Storage on this device</h2><div id="storage-info" class="muted" style="font-size:14px">Checking…</div></section>
   <section class="panel"><h2>Erase everything</h2><p>Deletes the encrypted cabinet from this browser. Without a backup it can’t be recovered.</p><button class="btn danger" data-act="wipe">${icon('trash')} Erase this cabinet</button></section>`;
+}
+async function fillScanner() {
+  const el = $('#ocr-status'), b = $('#ocr-btns'); if (!el) return;
+  const have = await scannerStatus();
+  el.textContent = have ? `Downloaded (about ${Math.round(OCR_BYTES / 1e6)} MB), works offline` : have === false ? (S.vault.settings.ocrOk ? 'Not on this device right now. It downloads again on your next scan.' : 'Not downloaded yet. It downloads on your first scan.') : 'Unavailable in this browser';
+  b.innerHTML = have ? '<button class="btn sm" data-act="ocr-remove">Remove download</button>' : '';
 }
 async function fillStorage() {
   const el = $('#storage-info'); if (!el) return;
@@ -973,7 +1014,7 @@ function render() {
   loadThumbs(app);
   const routeKey = r.join('/'); if (routeKey !== S.lastRoute) { window.scrollTo(0, 0); S.lastRoute = routeKey; }
   if (r[0] === 'search') { const q = $('#q'); q && q.focus(); }
-  if (r[0] === 'settings') fillStorage();
+  if (r[0] === 'settings') { fillStorage(); fillScanner(); }
 }
 
 /* ---------- actions ---------- */
@@ -1016,6 +1057,110 @@ function drawerModal(title, d = {}) {
     html: `<div class="mf"><label>Name<input id="nd-name" maxlength="40" value="${esc(d.name || '')}" placeholder="e.g. Travel, Pets, Kids’ school"></label><label>Icon (one emoji)<input id="nd-ic" maxlength="4" value="${esc(d.icon || '📁')}"></label><div class="swatches">${COLORS.map(c => `<button type="button" class="sw ${c === (d.color || COLORS[0]) ? 'on' : ''}" data-c="${c}" style="background:${c}" aria-label="Colour ${c}"></button>`).join('')}</div></div>`,
     actions: [{ label: 'Cancel', value: null }, { label: 'Save', cls: 'primary', value: ov => { const n = ov.querySelector('#nd-name').value.trim(); if (!n) { ov.querySelector('#nd-name').focus(); return undefined; } const on = ov.querySelector('.sw.on'); return { name: n, icon: ov.querySelector('#nd-ic').value.trim() || '📁', color: on ? on.dataset.c : COLORS[0] }; } }],
     onOpen: ov => ov.addEventListener('click', e => { const s = e.target.closest('.sw'); if (s) { ov.querySelectorAll('.sw').forEach(x => x.classList.remove('on')); s.classList.add('on'); } }) });
+}
+
+/* ---------- Scan to fill (on-device OCR, loaded on first use) ---------- */
+const OCR = { ready: null };
+const OCR_BYTES = 14848852 + 4896928 + 16559278 + 74014;   // engine + models, for the progress bar
+const ocrBase = () => new URL('ocr/', location.href).href;
+function loadScript(src) {
+  return new Promise((res, rej) => { const el = document.createElement('script'); el.src = src; el.onload = res; el.onerror = () => rej(new Error('Couldn’t load the scanner. Are you online for the first download?')); document.head.appendChild(el); });
+}
+async function fetchBytes(url, tick) {
+  const r = await fetch(url); if (!r.ok) throw new Error(`Couldn’t download the scanner (${r.status}).`);
+  if (!r.body || !r.body.getReader) { const b = new Uint8Array(await r.arrayBuffer()); tick(b.length); return b; }
+  const reader = r.body.getReader(); const parts = []; let n = 0;
+  for (;;) { const { done, value } = await reader.read(); if (done) break; parts.push(value); n += value.length; tick(value.length); }
+  const out = new Uint8Array(n); let o = 0; for (const p of parts) { out.set(p, o); o += p.length; } return out;
+}
+function ensureOCR(progress) {
+  if (OCR.ready) return OCR.ready;
+  OCR.ready = (async () => {
+    const base = ocrBase(); let got = 0; const tick = n => { got += n; progress(Math.min(1, got / OCR_BYTES)); };
+    await loadScript(base + 'ort.wasm.min.js'); await loadScript(base + 'paddle-ocr.js'); await loadScript(base + 'extract.js');
+    const [wasm, det, rec, dict] = await Promise.all(['ort-wasm-simd-threaded.wasm', 'det.ort', 'rec.onnx', 'dict.txt'].map(f => fetchBytes(base + f, tick)));
+    window.ort.env.wasm.wasmBinary = wasm;
+    await window.TijoriOCR.init({ ort: window.ort, detModel: det, recModel: rec, dictText: new TextDecoder().decode(dict), wasmPaths: base });
+  })();
+  OCR.ready.catch(() => { OCR.ready = null; });
+  return OCR.ready;
+}
+function progressPanel(title) {
+  const ov = document.createElement('div'); ov.className = 'modal-ov';
+  ov.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-label="${esc(title)}"><h2>${esc(title)}</h2><p id="pp-msg">Starting…</p><div class="pbar"><i id="pp-bar"></i></div><div class="modal-actions"><button type="button" class="btn" id="pp-x">Cancel</button></div></div>`;
+  const st = { cancelled: false };
+  ov.querySelector('#pp-x').onclick = () => { st.cancelled = true; ov.remove(); };
+  document.body.appendChild(ov);
+  st.set = (msg, frac) => { const m = ov.querySelector('#pp-msg'), b = ov.querySelector('#pp-bar'); if (m) m.textContent = msg; if (b && frac != null) b.style.width = Math.round(frac * 100) + '%'; };
+  st.close = () => ov.remove();
+  return st;
+}
+async function scanToFill(file) {
+  if (!S.draft) return;
+  if (!/^https?:$/.test(location.protocol)) return modal({ title: 'Scan to fill', html: '<p>Scanning works when Tijori is opened from its web address or installed on your phone. It doesn’t work from a downloaded file.</p>' });
+  if (!S.vault.settings.ocrOk) {
+    const ok = await modal({ title: 'Turn on Scan to fill?', html: `<p>Tijori reads documents with a text-recognition engine that runs on this phone. It needs a one-time download of about ${Math.round(OCR_BYTES / 1e6)} MB from this app’s own site. After that it works offline.</p><p>Your photos are read on this device and are never uploaded.</p><p class="small">Use Wi-Fi if you can.</p>`, actions: [{ label: 'Not now', value: false }, { label: 'Download and scan', cls: 'primary', value: true }] });
+    if (!ok) return;
+  }
+  const type = S.draft.item.type; const key = S.draft.key;
+  const pp = progressPanel('Reading your document');
+  try {
+    await ensureOCR(f => pp.set(f >= 1 ? 'Starting the reader…' : `Downloading the reader… ${Math.round(f * 100)}%`, f * 0.4));
+    if (pp.cancelled) return;
+    if (!S.vault.settings.ocrOk) { S.vault.settings.ocrOk = true; await saveVault(false); }
+    pp.set('Finding the text…', 0.45);
+    const bmp = await createImageBitmap(file);
+    const res = await window.TijoriOCR.recognize(bmp, { maxSide: 1280, onProgress: f => pp.set('Reading the text…', 0.5 + f * 0.5) });
+    bmp.close && bmp.close();
+    if (pp.cancelled || !S.draft || S.draft.key !== key) return;
+    pp.close();
+    await reviewScan(window.TijoriExtract.extract(type, res), file, res);
+  } catch (e) {
+    console.error(e); pp.close();
+    if (!pp.cancelled) modal({ title: 'Couldn’t scan', html: `<p>${esc(e.message || 'Something went wrong while reading the photo.')}</p>` });
+  }
+}
+async function reviewScan(ex, file, res) {
+  const form = $('form[data-form=item]'); if (!form || !S.draft) return; syncDraft(form);
+  const it = S.draft.item, t = T[it.type];
+  const rows = [];
+  if (ex.title && !it.title.trim()) rows.push({ k: '__title', l: 'Label', v: ex.title, cur: '', conf: 'medium', fd: { t: 'text' } });
+  for (const fd of t.fields) {
+    const sug = ex.fields[fd.k]; if (!sug) continue;
+    const v = fd.t === 'card' ? groupCard(sug.value) : sug.value;
+    const cur = String(it.fields[fd.k] || '').trim();
+    const same = cur && cur.replace(/\s/g, '').toUpperCase() === String(v).replace(/\s/g, '').toUpperCase();
+    if (!same) rows.push({ k: fd.k, l: fd.l, v, cur, conf: sug.conf, fd });
+  }
+  const attach = `<label class="sg-attach"><input type="checkbox" id="sg-att" checked> Also attach this photo to the document</label>`;
+  if (!rows.length) {
+    const lines = res.lines.length;
+    const r = await modal({ title: lines ? 'No new details found' : 'Couldn’t read any text', html: `<p>${lines ? `Read ${lines} line${lines > 1 ? 's' : ''} of text, but nothing matched the fields for a ${esc(lcName(t.n))}${Object.keys(ex.fields).length ? ' that you haven’t already filled' : ''}.` : 'Try again with the document filling the frame, in good light and without glare.'}</p>${attach}`,
+      actions: [{ label: 'Close', value: null, cls: 'primary', }].map(a => ({ ...a, value: ov => ({ att: ov.querySelector('#sg-att').checked }) })) });
+    if (r && r.att) await addFiles([file]);
+    return;
+  }
+  const inputFor = r => r.fd.t === 'date' ? `<input class="sg-v" type="date" data-k="${r.k}" value="${esc(r.v)}">` : `<input class="sg-v ${isMono(r.fd) ? 'mono' : ''}" type="text" data-k="${r.k}" value="${esc(r.v)}" autocomplete="off" spellcheck="false">`;
+  const html = `<p class="small">Found ${rows.length} detail${rows.length > 1 ? 's' : ''}. Untick anything wrong, or correct it here.</p><div class="sg-list">${rows.map(r => `<label class="sg"><input type="checkbox" data-c="${r.k}" ${r.conf === 'low' || (r.cur && r.cur !== r.v) ? '' : 'checked'}><span class="sg-l">${esc(r.l)}${r.conf === 'low' ? '<em>please check</em>' : ''}</span>${inputFor(r)}${r.cur ? `<small>Will replace “${esc(r.cur)}”</small>` : ''}</label>`).join('')}</div>${attach}`;
+  const picked = await modal({ title: `Scanned ${lcName(t.n)}`, html, actions: [{ label: 'Cancel', value: null }, { label: 'Fill in', cls: 'primary', value: ov => ({
+    vals: [...ov.querySelectorAll('[data-c]')].filter(c => c.checked).map(c => ({ k: c.dataset.c, v: ov.querySelector(`.sg-v[data-k="${c.dataset.c}"]`).value.trim() })).filter(x => x.v),
+    att: ov.querySelector('#sg-att').checked }) }] });
+  if (!picked) return;
+  const f2 = $('form[data-form=item]'); if (!f2) return;
+  for (const { k, v } of picked.vals) {
+    const el = k === '__title' ? f2.elements.namedItem('title') : f2.elements.namedItem('f_' + k); if (!el) continue;
+    const fd = t.fields.find(x => x.k === k);
+    el.value = fd && fd.t === 'card' ? groupCard(v) : v;
+    if (k === 'expiry') el.dataset.manual = '1';
+    el.classList.remove('filled'); void el.offsetWidth; el.classList.add('filled');
+  }
+  if (it.type === 'warranty' && !picked.vals.some(x => x.k === 'expiry')) autoWarranty(f2);
+  syncDraft(f2);
+  if (picked.att) await addFiles([file]);
+  if (picked.vals.length) toast(`Filled ${picked.vals.length} field${picked.vals.length > 1 ? 's' : ''}. Give them a quick check, then save.`);
+}
+async function scannerStatus() {
+  try { if (!window.caches) return null; const c = await caches.open('tijori-ocr-v1'); return !!(await c.match(ocrBase() + 'rec.onnx')); } catch { return null; }
 }
 
 const ACT = {
@@ -1065,6 +1210,10 @@ const ACT = {
     if (S.vault.items.some(i => i.drawerId === d.id)) return toast('Empty the drawer first');
     if (!await confirmM('Remove drawer?', `“${d.name}” is empty and will be removed.`, 'Remove', true)) return;
     S.vault.drawers = S.vault.drawers.filter(x => x.id !== d.id); await saveVault(); render();
+  },
+  'ocr-remove': async () => {
+    if (!await confirmM('Remove the scanner download?', `Frees about ${Math.round(OCR_BYTES / 1e6)} MB. Scan to fill downloads it again the next time you use it.`, 'Remove', true)) return;
+    await caches.delete('tijori-ocr-v1'); S.vault.settings.ocrOk = false; await saveVault(false); fillScanner(); toast('Scanner download removed');
   },
   'share-atts': async el => {
     const it = itemById(el.dataset.id); const atts = it.attachments || []; if (!atts.length) return;
@@ -1176,6 +1325,7 @@ document.addEventListener('change', async e => {
   const el = e.target, c = el.dataset && el.dataset.change; if (!c) return;
   try {
     if (c === 'att') { const files = [...el.files]; el.value = ''; await addFiles(files); }
+    else if (c === 'scan') { const file = el.files[0]; el.value = ''; if (file) await scanToFill(file); }
     else if (c === 'import') { const file = el.files[0]; el.value = ''; if (file) await importBackup(file); }
     else if (c === 'move') { const it = itemById(el.dataset.id); it.drawerId = el.value; it.updated = Date.now(); await saveVault(); const d = drawerById(el.value); render(); toast(`Moved to ${d.name}`); }
     else if (c === 'autolock') { S.vault.settings.autoLock = +el.value; await saveVault(false); toast(`Locks after ${el.value} min idle`); }
