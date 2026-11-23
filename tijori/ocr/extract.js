@@ -6,6 +6,7 @@
 
   /* ---------- small helpers ---------- */
   const MONTHS = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, sept: 9, oct: 10, nov: 11, dec: 12 };
+  const MONTH_WORD = /^(jan(uary)?|feb(ruary)?|mar(ch)?|apr(il)?|may|june?|july?|aug(ust)?|sept?(ember)?|oct(ober)?|nov(ember)?|dec(ember)?)$/i;
   const pad = n => String(n).padStart(2, '0');
   const clean = s => String(s || '').replace(/\s+/g, ' ').trim();
   const stripSep = s => clean(s).replace(/^[\s:;.\-\u2013\u2014=|]+/, '').replace(/[\s:;|,]+$/, '').trim();
@@ -19,13 +20,13 @@
   // all dates in a string, in order (Indian dd/mm/yyyy convention)
   function dates(s) {
     const out = []; s = String(s || '');
-    const re = /(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})|(\d{1,2})\s*[\/\-.]\s*(\d{1,2})\s*[\/\-.]\s*(\d{4}|\d{2})(?!\d)|(\d{1,2})(?:st|nd|rd|th)?[\s\-.\/]*([A-Za-z]{3,9})[\s\-.,\/]*(\d{4})/g;
+    const re = /(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})|(\d{1,2})\s*[\/\-.]\s*(\d{1,2})\s*[\/\-.]\s*(\d{4}|\d{2})(?!\d)|(\d{1,2})(?:st|nd|rd|th)?[\s\-.\/]*([A-Za-z]{3,9})[\s\-.,\/]*(\d{4}|\d{2}(?![\d:]))/g;
     let m;
     while ((m = re.exec(s))) {
       let iso = null;
       if (m[1]) iso = isoFrom(m[3], m[2], m[1]);
       else if (m[4]) iso = isoFrom(m[4], m[5], m[6]);
-      else if (m[7]) { const mo = MONTHS[m[8].toLowerCase().slice(0, m[8].toLowerCase().startsWith('sept') ? 4 : 3)]; if (mo) iso = isoFrom(m[7], mo, m[9]); }
+      else if (m[7]) { if (m[9].length === 2 && !MONTH_WORD.test(m[8])) continue; const mo = MONTHS[m[8].toLowerCase().slice(0, m[8].toLowerCase().startsWith('sept') ? 4 : 3)]; if (mo) iso = isoFrom(m[7], mo, m[9]); if (!iso && mo && m[9].length === 4 && MONTH_WORD.test(m[8])) iso = isoFrom(m[7], mo, m[9].slice(0, 2)); }
       if (iso) out.push({ iso, index: m.index, end: re.lastIndex });
     }
     return out;
@@ -37,7 +38,7 @@
     return m ? m[1] : null;
   }
   function phone(s) {
-    const m = /(1[- ]?8[06]0[\s-]?\d{2,3}[\s-]?\d{3,4}[\s-]?\d{0,4}|(?:\+91[\s-]?)?[6-9]\d{4}[\s-]?\d{5}|0\d{2,4}[\s-]?\d{6,8})/.exec(String(s || ''));
+    const m = /(?<![A-Za-z0-9\/])(1[- ]?8[06]0[\s-]?\d{2,3}[\s-]?\d{3,4}(?:[\s-]?\d{1,4})?|1[- ]?8[06]0[\s-]?\d{4}|(?:\+91[\s-]?)?[6-9]\d{4}[\s-]?\d{5}|0\d{2,4}[\s-]?\d{6,8})(?![\d\/])/.exec(String(s || ''));
     return m ? clean(m[1]) : null;
   }
   // OCR confusions when a position must be a letter / a digit
@@ -117,13 +118,35 @@
   const titleCase = s => s.toLowerCase().replace(/\b([a-z])/g, c => c.toUpperCase());
   const nameOut = v => v && (v === v.toUpperCase() ? v : titleCase(v));
 
+  // Licensed insurers in India (IRDAI list), with the names they print. Checked before guessing from the text.
+  const INSURERS = [
+    [/\backo\b/i, 'ACKO General Insurance'], [/bajaj\s*(allianz\s*)?general/i, 'Bajaj General Insurance'], [/cholamandalam/i, 'Cholamandalam MS General Insurance'],
+    [/\b(zuno|edelweiss\s*general)\b/i, 'Zuno General Insurance'], [/(future\s*generali|generali\s*central)/i, 'Generali Central Insurance'], [/(go\s*digit|digit\s*general)/i, 'Go Digit General Insurance'],
+    [/hdfc\s*ergo/i, 'HDFC ERGO General Insurance'], [/icici\s*lombard/i, 'ICICI Lombard General Insurance'], [/iffco[\s-]*tokio/i, 'IFFCO Tokio General Insurance'],
+    [/(zurich\s*kotak|kotak\s*(mahindra\s*)?general)/i, 'Zurich Kotak General Insurance'], [/liberty\s*(general|videocon)/i, 'Liberty General Insurance'], [/magma\s*(hdi\s*)?general/i, 'Magma General Insurance'],
+    [/national\s*insurance\s*(co|company)/i, 'National Insurance Company'], [/navi\s*general/i, 'Navi General Insurance'], [/new\s*india\s*assurance/i, 'The New India Assurance'],
+    [/oriental\s*insurance/i, 'The Oriental Insurance Company'], [/(kshema|raheja\s*qbe)/i, 'Kshema General Insurance'], [/reliance\s*general/i, 'Reliance General Insurance'],
+    [/royal\s*sundaram/i, 'Royal Sundaram General Insurance'], [/sbi\s*general/i, 'SBI General Insurance'], [/shriram\s*general/i, 'Shriram General Insurance'],
+    [/tata\s*aig/i, 'Tata AIG General Insurance'], [/united\s*india\s*insurance/i, 'United India Insurance'], [/universal\s*sompo/i, 'Universal Sompo General Insurance'],
+    [/bharti\s*axa/i, 'Bharti AXA General Insurance'], [/star\s*health/i, 'Star Health and Allied Insurance'], [/niva\s*bupa|max\s*bupa/i, 'Niva Bupa Health Insurance'],
+    [/care\s*health|religare\s*health/i, 'Care Health Insurance'], [/aditya\s*birla\s*health/i, 'Aditya Birla Health Insurance'], [/manipal\s*cigna|cigna\s*ttk/i, 'ManipalCigna Health Insurance'],
+    [/galaxy\s*health/i, 'Galaxy Health Insurance'], [/narayana\s*health\s*insurance/i, 'Narayana Health Insurance'],
+    [/life\s*insurance\s*corporation|\blic\s*of\s*india/i, 'LIC of India'], [/hdfc\s*life/i, 'HDFC Life'], [/icici\s*pru(dential)?\s*life/i, 'ICICI Prudential Life'], [/sbi\s*life/i, 'SBI Life'],
+    [/(axis\s*)?max\s*life/i, 'Axis Max Life'], [/tata\s*aia/i, 'Tata AIA Life'], [/bajaj\s*(allianz\s*)?life/i, 'Bajaj Life'], [/kotak\s*(mahindra\s*)?life/i, 'Kotak Life'],
+    [/pnb\s*met\s*life/i, 'PNB MetLife'], [/aditya\s*birla\s*sun\s*life/i, 'Aditya Birla Sun Life'], [/canara\s*hsbc/i, 'Canara HSBC Life'], [/(bandhan|aegon)\s*life/i, 'Bandhan Life'],
+  ];
+  const PREVIOUS = /\b(previous|prev\.?|earlier|last\s*year|old\s*policy|existing\s*insurer)\b/i;
   function insurerName(ocr) {
-    for (const l of ocr.lines) {
-      for (const it of (l.items || [{ text: l.text }])) {
-        const t = clean(it.text);
-        if (/(insurance|assurance|life|general|health|allianz|lombard|ergo|bupa|star|niva|care|digit|acko|tata aig|hdfc|icici|sbi|bajaj|lic\b)/i.test(t) && /(insurance|assurance|ltd|limited|company|co\.)/i.test(t) && t.length < 80 && !/(policy|schedule|premium|period|insured|sum)/i.test(t))
-          return t.replace(/\b(company|co\.?)\b.*$/i, m => m).replace(/\s*(limited|ltd\.?)\s*$/i, '').replace(/\s+company$/i, '').trim();
-      }
+    const items = []; for (const l of ocr.lines) { const its = l.items && l.items.length ? l.items : [{ text: l.text }]; const prev = PREVIOUS.test(l.text); for (const it of its) items.push({ t: clean(it.text), prev }); }
+    // 1. a known insurer, ignoring "Previous insurer" rows; the one named most often wins
+    const count = new Map();
+    for (const { t, prev } of items) if (!prev) for (const [re, name] of INSURERS) if (re.test(t)) count.set(name, (count.get(name) || 0) + 1);
+    if (count.size) return { value: [...count.entries()].sort((a, b) => b[1] - a[1])[0][0], conf: 'high' };
+    // 2. otherwise a line that looks like a company name
+    for (const { t, prev } of items) {
+      if (prev || /^[a-z]/.test(t) || t.split(/\s+/).length > 8) continue;
+      if (/(insurance|assurance|life|general|health|allianz|lombard|ergo|bupa|star|niva|care|digit|acko|tata aig|hdfc|icici|sbi|bajaj|lic\b)/i.test(t) && /(insurance|assurance|ltd|limited|company|co\.)/i.test(t) && t.length < 80 && !/(policy|schedule|premium|period|insured|sum|companies|regulated)/i.test(t))
+        return { value: t.replace(/\s*(limited|ltd\.?)\s*$/i, '').replace(/\s+company$/i, '').trim(), conf: 'low' };
     }
     return null;
   }
@@ -168,9 +191,12 @@
     const m2 = /(?<!\d)((?:\d{4} ?){3}\d{4})(?!\d)/.exec(t);
     return m2 ? { value: m2[1].replace(/\D/g, ''), conf: 'low' } : null;
   }
+  const STATES = new Set('AN AP AR AS BR CG CH DD DL DN GA GJ HP HR JH JK KA KL LA LD MH ML MN MP MZ NL OD OR PB PY RJ SK TN TR TS UK UA UP WB'.split(' '));
   function vehicleReg(text) {
-    const m = /\b([A-Z]{2})[\s-]?(\d{1,2})[\s-]?([A-Z]{1,3})[\s-]?(\d{1,4})\b/.exec(text.toUpperCase());
-    return m ? { value: `${m[1]} ${m[2].padStart(2, '0')} ${m[3]} ${m[4].padStart(4, '0')}`, conf: 'high' } : null;
+    const re = /\b([A-Z]{2})[\s-]?(\d{1,2})[\s-]?([A-Z]{1,3})[\s-]?(\d{1,4})\b/g; let m;
+    const up = text.toUpperCase();
+    while ((m = re.exec(up))) if (STATES.has(m[1])) return { value: `${m[1]} ${m[2].padStart(2, '0')} ${m[3]} ${m[4].padStart(4, '0')}`, conf: 'high' };
+    return null;
   }
   function dlNumber(text) {
     // state code + RTO (2 digits) + year (4) + 7 digits, e.g. MH12 20180045678. Fix common letter/digit mix-ups in the digit part.
@@ -196,17 +222,110 @@
     return { value: all[0], conf: all.length === 1 ? 'high' : 'medium' };
   }
   function periodDates(ocr) {   // "Period of Insurance: From 05/01/2026 To 04/01/2027"
-    const t = byLabel(ocr, /(period\s*of\s*(insurance|cover)|policy\s*period|insurance\s*period|cover\s*period)/i, { accept: v => dates(v).length >= 1 });
-    const ds = dates(t || ''); if (ds.length >= 2) return { start: ds[0].iso, end: ds[ds.length - 1].iso };
+    const PRE = /(period\s*of\s*(insurance|cover)|policy\s*period|insurance\s*period|cover\s*period)/i;
+    const t = byLabel(ocr, PRE, { accept: v => dates(v).length >= 1 });
+    let ds = dates(t || ''); if (ds.length >= 2) return { start: ds[0].iso, end: ds[ds.length - 1].iso };
+    if (ds.length === 1) {   // the end date ran onto the next line, in the same column
+      const L = ocr.lines, li = L.findIndex(l => PRE.test(l.text) && l.text.includes(t.slice(0, 8)));
+      if (li >= 0 && L[li + 1]) {
+        const its = itemsOf(L[li]), vi = its.find(x => x.text.includes(t.slice(0, 8))) || its[its.length - 1], nx = itemsOf(L[li + 1]);
+        const pick = vi.x0 != null && nx.every(n => n.x0 != null) ? nx.reduce((a, n) => Math.abs(n.x0 - vi.x0) < Math.abs(a.x0 - vi.x0) ? n : a) : nx[0];
+        ds = dates(vi.text + ' ' + pick.text); if (ds.length >= 2) return { start: ds[0].iso, end: ds[ds.length - 1].iso };
+      }
+    }
     const full = allText(ocr); const m = /from[^0-9]{0,15}([0-9][^\n]{5,30}?)\s*(?:to|till|upto|-)\s*([0-9][^\n]{5,30})/i.exec(full);
     if (m) { const a = firstDate(m[1]), b = firstDate(m[2]); if (a && b) return { start: a, end: b }; }
     return null;
+  }
+  // ---- rules shared by all insurers ----
+  const itemsOf = l => (l.items && l.items.length ? l.items : [{ text: l.text }]);
+  const noPhones = s => { s = String(s || ''); let p; while ((p = phone(s))) s = s.replace(p, ' '); return s; };
+  // The premium actually paid: the last "total" after tax, not Own Damage / Liability / Package / Net parts.
+  function finalPremium(ocr) {
+    const cands = [];
+    const score = lab => {
+      lab = lab.toLowerCase();
+      if (PREVIOUS.test(lab) || /(discount|loading|deductible|rate|%\s*of)/.test(lab)) return 0;
+      if (/(total|gross|final)\s*(policy\s*)?premium(?!\s*(\(|of\s*)?(od|own|tp|third|liab|add))|premium\s*payable|total\s*(amount\s*)?payable|amount\s*payable|premium\s*\(?(incl|including|with)\b|premium\s*paid|total\s*amount\s*paid/.test(lab) &&
+          !/(package|own\s*damage|\bod\b|liability|\btp\b|third|basic|net|add-?on|section|cover\b|before\s*tax|excl)/.test(lab)) return 3;
+      if (/(own\s*damage|\bod\b|liability|\btp\b|third|basic|net|package|add-?on|section|before\s*tax|excl|gst|tax)/.test(lab)) return 1;
+      return 2;
+    };
+    const L = ocr.lines;
+    for (let li = 0; li < L.length; li++) {
+      const lt = clean(L[li].text);
+      const rc = /(?:sum|amount)\s*of\s*(?:rs\.?|inr|₹)?\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)\s*(?:\/-)?\s*towards\s*(?:the\s*)?premium/i.exec(lt);   // premium receipt
+      if (rc && amount(rc[1])) cands.push({ v: amount(rc[1]), s: 3, li });
+      const items = itemsOf(L[li]);
+      for (let ii = 0; ii < items.length; ii++) {
+        const t = clean(items[ii].text); const m = /premium|amount\s*payable|total\s*payable|amount\s*paid/i.exec(t); if (!m) continue;
+        const sc = score(t.slice(0, m.index + m[0].length + 20)); if (!sc) continue;
+        const after = noPhones(t.slice(m.index + m[0].length).replace(/\(\s*[A-Z]\s*\)/g, ' ').replace(/\(?\d{1,2}(\.\d+)?\s*%\)?/g, ' '));
+        let v = amount(after);
+        const cell = x => { x = noPhones(x); return /[A-Za-z]{3,}/.test(x.replace(/\b(rs|inr)\b/gi, '')) ? null : amount(x); };
+        if (!v && t.split(/\s+/).length <= 7) {
+          if (items[ii + 1]) v = cell(items[ii + 1].text);
+          if (!v && L[li + 1]) {   // a table: the value sits under its heading
+            const nx = itemsOf(L[li + 1]), it = items[ii];
+            if (items.length === 1) v = cell(nx[0].text);
+            else if (it.x0 != null && it.w && nx.every(n => n.x0 != null)) {
+              const mid = it.x0 + it.w / 2, pick = nx.reduce((a, n) => Math.abs(n.x0 + n.w / 2 - mid) < Math.abs(a.x0 + a.w / 2 - mid) ? n : a);
+              if (Math.abs(pick.x0 + pick.w / 2 - mid) < Math.max(it.w, 60)) v = cell(pick.text);
+            } else if (nx.length === items.length) v = cell(nx[ii].text);
+          }
+        }
+        if (v && !/^(19|20)\d\d$/.test(v.replace(/,/g, ''))) cands.push({ v, s: sc, li });
+      }
+    }
+    if (!cands.length) return null;
+    const best = Math.max(...cands.map(c => c.s)); const top = cands.filter(c => c.s === best);
+    const num = v => parseFloat(v.replace(/,/g, ''));
+    const pick = top.reduce((a, c) => num(c.v) > num(a.v) ? c : a);   // a total includes the tax, so it is the largest of its kind
+    return { value: pick.v, conf: best === 3 ? 'high' : best === 2 ? 'medium' : 'low' };
+  }
+  // The claims / helpline number: phone numbers scored by the words around them.
+  function helplineNumber(ocr, extraRe) {
+    let best = null; const L = ocr.lines;
+    for (let li = 0; li < L.length; li++) {
+      const items = itemsOf(L[li]);
+      for (let ii = 0; ii < items.length; ii++) {
+        const p = phone(items[ii].text); if (!p) continue;
+        const own = items[ii].text, at = own.indexOf(p.split(/[\s-]/)[0]);
+        const above = ii === 0 && L[li - 1] && L[li - 1].text.split(/\s+/).length <= 6 && !/\d/.test(L[li - 1].text) ? L[li - 1].text : '';
+        const ctx = [above, items[ii - 1] && items[ii - 1].text.split(/\s+/).length <= 8 ? items[ii - 1].text : '', own.slice(Math.max(0, at - 45), at + p.length + 25)].join(' ').toLowerCase().replace(/no[\s-]*claims?[\s-]*(bonus|discount)/g, ' ');
+        let s = /(claim|helpline|toll[\s-]*free|road\s*side|assistance|emergency|24\s*[x×*]\s*7|cashless)/.test(ctx) || (extraRe && extraRe.test(ctx)) ? 3 : /(customer\s*(care|service)|support|call\s*us|grievance)/.test(ctx) ? 2 : 1;
+        if (/^1[\s-]?800/.test(p)) s += 0.5;   // toll-free
+        if (/(fax|mobile\s*(no|number)?\s*:?$|registered\s*mobile)/.test(ctx)) s -= 1;
+        if (!best || s > best.s) best = { v: p, s };
+      }
+    }
+    return best ? { value: best.v, conf: best.s >= 3 ? 'high' : best.s >= 2 ? 'medium' : 'low' } : null;
+  }
+  // Comprehensive / Third-party / Own damage, from the plan or product name (not from prose that mentions all three).
+  function coverType(ocr) {
+    const KIND = [[/(third[\s-]*party|liability)\s*(only\s*)?(plan|policy|insurance)|\bliability\s*only\b|\bact\s*only\b|\bstand[\s-]*alone\s*tp\b/i, 'Third-party'],
+      [/stand[\s-]*alone\s*own\s*damage|own[\s-]*damage\s*(only\s*)?(plan|policy|insurance)|\bsaod\b/i, 'Own damage'],
+      [/comprehensive|bundled|zero\s*dep(reciation)?\s*(plan|policy)|bumper[\s-]*to[\s-]*bumper/i, 'Comprehensive']];
+    const kindOf = t => { for (const [re, k] of KIND) if (re.test(t)) return k; return null; };
+    const lab = byLabel(ocr, /^(plan|plan\s*type|cover\s*type|type\s*of\s*(cover|policy)|policy\s*type)\b/i, { notRe: PREVIOUS, accept: v => !!kindOf(v + ' plan') });
+    if (lab) return { value: kindOf(lab + ' plan'), conf: 'high' };
+    let pkg = false;
+    for (const l of ocr.lines) {
+      if (PREVIOUS.test(l.text)) continue;
+      for (const it of itemsOf(l)) {
+        const t = clean(it.text); if (t.split(/\s+/).length > 9 || /(premium|\d{3,})/i.test(t)) continue;
+        const k = kindOf(t); if (k) return { value: k, conf: 'medium' };
+        if (/package\s*(plan|policy)/i.test(t)) pkg = true;
+      }
+    }
+    if (!pkg) for (const l of ocr.lines) if (!PREVIOUS.test(l.text) && /package\s*(plan|policy)/i.test(l.text)) pkg = true;
+    return pkg ? { value: 'Comprehensive', conf: 'low' } : null;
   }
   const dateAfter = (ocr, re, opts) => { const v = byLabel(ocr, re, { accept: x => !!firstDate(x), ...(opts || {}) }); return v ? firstDate(v) : null; };
   const amountAfter = (ocr, re) => { const v = byLabel(ocr, re, { accept: x => !!amount(x) }); return v ? amount(v) : null; };
   const phoneAfter = (ocr, re) => { const v = byLabel(ocr, re, { accept: x => !!phone(x) }); return v ? phone(v) : null; };
   const textAfter = (ocr, re, opts) => byLabel(ocr, re, opts);
-  const idAfter = (ocr, re, minLen = 4) => { const v = byLabel(ocr, re, { accept: x => /[0-9]/.test(x) && x.replace(/[^A-Za-z0-9]/g, '').length >= minLen }); return v ? v.replace(/^(no|number|num|#)\.?\s*[:\-]?\s*/i, '').split(/\s{2,}| (?=[A-Za-z]+\s*:)/)[0].replace(/[ ,;]+$/, '') : null; };
+  const idAfter = (ocr, re, minLen = 4, opts) => { const v = byLabel(ocr, re, { ...(opts || {}), accept: x => /[0-9]/.test(x) && x.replace(/[^A-Za-z0-9]/g, '').length >= minLen }); return v ? v.replace(/^(no|number|num|#)\.?\s*[:\-]?\s*/i, '').split(/\s{2,}| (?=[A-Za-z]+\s*:)| (?=[A-Z][a-z]{2,}\b)/)[0].replace(/[ ,;]+$/, '') : null; };
 
   function icao(s) { const w = [7, 3, 1]; let t = 0; for (let i = 0; i < s.length; i++) { const c = s[i]; t += (c === '<' ? 0 : /\d/.test(c) ? +c : c.charCodeAt(0) - 55) * w[i % 3]; } return String(t % 10); }
   function mrz(text, ocr) {   // passport machine-readable zone (the two lines full of <<<)
@@ -382,9 +501,14 @@
         engine: idAfter(o, /((engine|motor)\s*(\/\s*motor)?\s*(no|number)?|\be\.?\s*no\b)/i, 5), regdate, expiry };
     },
     motor_ins(o, T) {
-      const p = periodDates(o);
-      const ncb = textAfter(o, /\bncb\b|no\s*claim\s*bonus/i, { accept: v => /\d{1,2}\s*%/.test(v) });
-      return { insurer: insurerName(o), policy: idAfter(o, /policy\s*(no|number|#)/i, 6), reg: vehicleReg(T), idv: amountAfter(o, /\bidv\b|insured\s*declared\s*value/i), premium: amountAfter(o, /(total|gross|net)?\s*premium/i), ncb: ncb ? (/(\d{1,2})\s*%/.exec(ncb) || [])[1] + '%' : null, claim: phoneAfter(o, /(claim|toll\s*free|helpline|customer\s*care)/i) || phone(T), expiry: (p && p.end) || dateAfter(o, /(expiry|valid\s*till|end\s*date|to\s*date|till)/i) };
+      const p = periodDates(o), nop = { notRe: PREVIOUS };
+      const ncb = textAfter(o, /\bncb\b|no[\s-]*claim\s*bonus/i, { notRe: PREVIOUS, accept: v => /\d{1,2}\s*%/.test(v) });
+      let idv = amountAfter(o, /total\s*idv/i) || amountAfter(o, /\bidv\b|insured\s*declared\s*value|insured\s*value/i);
+      if (idv) idv = idv.replace(/\.0{1,2}$/, '');   // whole rupees printed as 412500.0
+      if (idv && /^\d{4,}$/.test(idv)) idv = idv.replace(/(\d)(?=(\d\d)+\d$)/g, '$1,');   // 485000 -> 4,85,000
+      return { insurer: insurerName(o), policy: idAfter(o, /policy\s*(no|number|#)/i, 6, nop), reg: vehicleReg(T), kind: coverType(o), idv,
+        premium: finalPremium(o) || amountAfter(o, /premium/i), ncb: ncb ? (/(\d{1,2})\s*%/.exec(ncb) || [])[1] + '%' : null, claim: helplineNumber(o),
+        expiry: (p && p.end) || dateAfter(o, /(expiry|valid\s*till|end\s*date|to\s*date|till)/i, nop) };
     },
     puc(o, T) { return { cert: idAfter(o, /(certificate|puc|puc?c)\s*(sl\.?\s*)?(no|number)/i, 5), reg: vehicleReg(T), expiry: dateAfter(o, /(valid(ity)?\s*(upto|till|date)?|expiry)/i) }; },
     credit(o, T) {
@@ -397,12 +521,12 @@
     },
     health(o, T) {
       const p = periodDates(o);
-      return { insurer: insurerName(o), plan: textAfter(o, /(plan|product)\s*(name)?\b(?!\s*no)/i, { accept: v => v.length > 2 && !/^\d/.test(v) }), policy: idAfter(o, /policy\s*(no|number|#)/i, 6), sum: amountAfter(o, /sum\s*insured|coverage\s*amount/i), premium: amountAfter(o, /(total|gross|net|annual)\s*premium|premium\s*(amount|paid)?/i), members: textAfter(o, /insured\s*(members|persons?)|members\s*covered/i, { accept: v => /[A-Za-z]{3}/.test(v) }), tpa: phoneAfter(o, /(cashless|tpa|helpline|toll\s*free|customer\s*care)/i), agent: textAfter(o, /(agent|intermediary|advisor)\s*(name)?/i, { accept: v => /[A-Za-z]{3}/.test(v) }), start: (p && p.start) || dateAfter(o, /(policy\s*start|start\s*date|commencement|inception)/i), expiry: (p && p.end) || dateAfter(o, /(expiry|end\s*date|renewal\s*date|valid\s*till)/i) };
+      return { insurer: insurerName(o), plan: textAfter(o, /(plan|product)\s*(name)?\b(?!\s*no)/i, { accept: v => v.length > 2 && !/^\d/.test(v) }), policy: idAfter(o, /policy\s*(no|number|#)/i, 6), sum: amountAfter(o, /sum\s*insured|coverage\s*amount/i), premium: finalPremium(o) || amountAfter(o, /(total|gross|net|annual)\s*premium|premium\s*(amount|paid)?/i), members: textAfter(o, /insured\s*(members|persons?)|members\s*covered/i, { accept: v => /[A-Za-z]{3}/.test(v) }), tpa: phoneAfter(o, /(cashless|tpa|helpline|toll\s*free|customer\s*care)/i), agent: textAfter(o, /(agent|intermediary|advisor)\s*(name)?/i, { accept: v => /[A-Za-z]{3}/.test(v) }), start: (p && p.start) || dateAfter(o, /(policy\s*start|start\s*date|commencement|inception)/i), expiry: (p && p.end) || dateAfter(o, /(expiry|end\s*date|renewal\s*date|valid\s*till)/i) };
     },
     life(o, T) {
       return { insurer: insurerName(o), plan: textAfter(o, /(plan|product)\s*(name)?/i, { accept: v => v.length > 2 && !/^\d/.test(v) }), policy: idAfter(o, /policy\s*(no|number|#)/i, 6), sum: amountAfter(o, /sum\s*assured|cover\s*amount|death\s*benefit/i), premium: amountAfter(o, /(installment|instalment|modal|annual|total)?\s*premium/i), freq: (m => m ? titleCase(m[1]) : null)(/\b(yearly|annual|half[\s-]?yearly|quarterly|monthly|single)\b/i.exec(T)), nominee: textAfter(o, /nominee\s*(name)?/i, { accept: isNameLike }), maturity: dateAfter(o, /(maturity|expiry|cover\s*(ceases|ends))/i), expiry: dateAfter(o, /(next\s*(premium)?\s*due|due\s*date|fup|first\s*unpaid)/i) };
     },
-    home_ins(o, T) { const p = periodDates(o); return { insurer: insurerName(o), policy: idAfter(o, /policy\s*(no|number|#)/i, 6), property: textAfter(o, /(risk\s*location|property|address\s*of\s*premises|location)/i, { accept: v => v.length > 5 }), sum: amountAfter(o, /sum\s*insured/i), premium: amountAfter(o, /premium/i), expiry: (p && p.end) || dateAfter(o, /(expiry|end\s*date|valid\s*till)/i) }; },
+    home_ins(o, T) { const p = periodDates(o); return { insurer: insurerName(o), policy: idAfter(o, /policy\s*(no|number|#)/i, 6), property: textAfter(o, /(risk\s*location|property|address\s*of\s*premises|location)/i, { accept: v => v.length > 5 }), sum: amountAfter(o, /sum\s*insured/i), premium: finalPremium(o) || amountAfter(o, /premium/i), expiry: (p && p.end) || dateAfter(o, /(expiry|end\s*date|valid\s*till)/i) }; },
     travel(o, T) { const p = periodDates(o); return { insurer: insurerName(o), policy: idAfter(o, /policy\s*(no|number|#)/i, 6), trip: textAfter(o, /(destination|geography|trip)/i, { accept: v => v.length > 2 }), travellers: textAfter(o, /(traveller|insured\s*person|name\s*of\s*insured)/i, { accept: v => /[A-Za-z]{3}/.test(v) }), helpline: phoneAfter(o, /(assistance|emergency|helpline|toll)/i), start: (p && p.start) || dateAfter(o, /(start|departure|from)/i), expiry: (p && p.end) || dateAfter(o, /(end|return|to\b|till)/i) }; },
     warranty(o, T) {
       const purchase = dateAfter(o, /(invoice\s*date|bill\s*date|purchase\s*date|date\s*of\s*purchase|date)/i, { notRe: /(valid|till|upto|expir)/i });
