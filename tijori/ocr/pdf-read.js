@@ -71,7 +71,7 @@
     });
   }
 
-  async function* pages(doc, { maxPages = 8, maxScanned = 3, renderSide = 2600 } = {}) {
+  async function* pages(doc, { maxPages = 8, maxScanned = 6, renderSide = 2600 } = {}) {
     let scanned = 0;
     for (let n = 1; n <= Math.min(doc.numPages, maxPages); n++) {
       const page = await doc.getPage(n);

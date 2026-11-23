@@ -329,7 +329,7 @@ body:has(.modal-ov) .toast{bottom:auto;top:calc(16px + env(safe-area-inset-top))
      so the browser blocks every fetch/XHR/WebSocket/beacon.
    ========================================================= */
 
-const APP_VERSION = '2026-11-23.2';   // bump with every release; shown in Settings
+const APP_VERSION = '2026-11-23.3';   // bump with every release; shown in Settings
 const ITER = 600000;
 const DB_NAME = 'tijori';
 const enc = new TextEncoder(), dec = new TextDecoder();
@@ -1373,7 +1373,7 @@ async function scanFiles(sources) {
         // Some PDFs carry hidden text that doesn't match what's printed (scanner apps, odd fonts).
         // If that text didn't give the key detail, read the pages as images as well.
         if (!pp.cancelled && textPages && !found.slice(start).some(f => f.ex.fields[keyField])) {
-          const n = Math.min(doc.numPages, 3), asImage = [];
+          const n = Math.min(doc.numPages, 6), asImage = [];
           for (let k = 1; k <= n && !pp.cancelled; k++) {
             const where = `${doc.numPages > 1 ? `${s.name}, page ${k}` : s.name} (read as image)`;
             const c = await window.TijoriPDF.renderPage(doc, k, 2600, 1);
