@@ -19,7 +19,7 @@
   // all dates in a string, in order (Indian dd/mm/yyyy convention)
   function dates(s) {
     const out = []; s = String(s || '');
-    const re = /(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})|(\d{1,2})\s*[\/\-.]\s*(\d{1,2})\s*[\/\-.]\s*(\d{4}|\d{2})(?!\d)|(\d{1,2})(?:st|nd|rd|th)?[\s\-.]*([A-Za-z]{3,9})[\s\-.,]*(\d{4})/g;
+    const re = /(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})|(\d{1,2})\s*[\/\-.]\s*(\d{1,2})\s*[\/\-.]\s*(\d{4}|\d{2})(?!\d)|(\d{1,2})(?:st|nd|rd|th)?[\s\-.\/]*([A-Za-z]{3,9})[\s\-.,\/]*(\d{4})/g;
     let m;
     while ((m = re.exec(s))) {
       let iso = null;
@@ -327,7 +327,18 @@
       return { number: num, name: textAfter(o, /^name\b/i, { accept: isNameLike, fuzzy: 'name' }), classes: classes ? [...new Set(classes)].join(', ') : null, rto: rto ? rto.toUpperCase().replace(/^.*?(?=\b(RTO|DTO|ARTO))/, '').replace(/^(ARTO|RTO|DTO)(?=[A-Z])/, '$1 ') : null, issue, expiry };
     },
     rc(o, T) {
-      return { reg: vehicleReg(T), model: textAfter(o, /(maker'?s?\s*(name|class)?|model|make)/i, { accept: v => v.length > 2 }), owner: textAfter(o, /owner'?s?\s*name|owner/i, { accept: isNameLike }), chassis: (m => m ? { value: m[0], conf: 'high' } : idAfter(o, /chassis|vin/i, 10))(/\b[A-HJ-NPR-Z0-9]{17}\b/.exec(T.toUpperCase())), engine: idAfter(o, /engine/i, 5), regdate: dateAfter(o, /(reg(n|istration)?\.?\s*date|date\s*of\s*reg)/i), expiry: dateAfter(o, /(reg(n|istration)?\.?\s*(valid|upto)|valid\s*upto|fitness\s*upto)/i) };
+      let regdate = dateAfter(o, /(reg(n|d|istration)?\.?\s*(date|dt)\b|date\s*of\s*reg(n|d|istration)?|registered\s*on|regn?\.?\s*on\b)/i);
+      let expiry = dateAfter(o, /(reg(n|d|istration)?\.?\s*(valid(ity)?|up\s*to|upto|till)|valid\s*up\s*to|valid\s*upto|valid\s*till|fitness\s*(\/\s*regn?\.?)?\s*up\s*to|fitness\s*(\/\s*regn?\.?)?\s*upto)/i);
+      // safety net: on an RC the earliest full date is registration and the latest is validity (usually 15 years later)
+      const ds = [...new Set(dates(T).map(d => d.iso))].sort();
+      if (!regdate && ds.length >= 2) regdate = ds[0];
+      if (!expiry && ds.length >= 2 && +ds[ds.length - 1].slice(0, 4) - +ds[0].slice(0, 4) >= 4) expiry = ds[ds.length - 1];
+      if (regdate && expiry && expiry <= regdate) expiry = null;
+      return { reg: vehicleReg(T),
+        model: textAfter(o, /(maker\s*model|model\s*name|maker'?s?\s*(name|class)?|\bmodel\b|\bmake\b)/i, { accept: v => v.length > 2 && !/^(model|name|class)$/i.test(v) }),
+        owner: textAfter(o, /(owner'?s?\s*name|\bowner\b|^name\b)/i, { notRe: /(maker|father|son|wife|daughter)/i, accept: isNameLike }),
+        chassis: (m => m ? { value: m[0], conf: 'high' } : idAfter(o, /(chassis|vin|ch\.?\s*no)/i, 10))(/\b[A-HJ-NPR-Z0-9]{17}\b/.exec(T.toUpperCase())),
+        engine: idAfter(o, /((engine|motor)\s*(\/\s*motor)?\s*(no|number)?|\be\.?\s*no\b)/i, 5), regdate, expiry };
     },
     motor_ins(o, T) {
       const p = periodDates(o);
