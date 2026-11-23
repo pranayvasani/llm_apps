@@ -329,7 +329,7 @@ body:has(.modal-ov) .toast{bottom:auto;top:calc(16px + env(safe-area-inset-top))
      so the browser blocks every fetch/XHR/WebSocket/beacon.
    ========================================================= */
 
-const APP_VERSION = '2026-11-22.11';   // bump with every release; shown in Settings
+const APP_VERSION = '2026-11-23.2';   // bump with every release; shown in Settings
 const ITER = 600000;
 const DB_NAME = 'tijori';
 const enc = new TextEncoder(), dec = new TextDecoder();
@@ -389,7 +389,7 @@ const T = {
   aadhaar: { n: 'Aadhaar', ic: '🆔', key: 'number', fields: [f('number', 'Aadhaar number', 'secret', { p: 'XXXX XXXX XXXX' }), f('name', 'Name on card'), f('dob', 'Date of birth', 'date'), f('mobile', 'Linked mobile', 'tel'), f('address', 'Address', 'textarea')] },
   pan: { n: 'PAN card', ic: '🪪', key: 'number', fields: [f('number', 'PAN', 'text', { up: 1, mono: 1, hide: 1, p: 'ABCDE1234F' }), f('name', 'Name'), f('father', 'Father’s name'), f('dob', 'Date of birth', 'date')] },
   passport: { n: 'Passport', ic: '📘', key: 'number', exp: 'expiry', due: 'Expires', fields: [f('number', 'Passport number', 'text', { up: 1, mono: 1, hide: 1 }), f('name', 'Name'), f('fileno', 'File number', 'text', { up: 1, mono: 1, hide: 1 }), f('place', 'Place of issue'), f('issue', 'Date of issue', 'date'), f('expiry', 'Date of expiry', 'date')] },
-  voter: { n: 'Voter ID', ic: '🗳️', key: 'number', fields: [f('number', 'EPIC number', 'text', { up: 1, mono: 1, hide: 1 }), f('name', 'Name'), f('constituency', 'Constituency'), f('part', 'Part / serial no.')] },
+  voter: { n: 'Voter ID', ic: '🗳️', key: 'number', fields: [f('number', 'EPIC number', 'text', { up: 1, mono: 1, hide: 1 }), f('name', 'Name'), f('relative', 'Father’s / husband’s name'), f('dob', 'Date of birth', 'date'), f('gender', 'Gender'), f('address', 'Address', 'textarea'), f('issue', 'Date of issue', 'date'), f('ero', 'Registration office', 'text', { p: 'e.g. 210 - Kothrud Assembly Constituency' })] },
   id_other: { n: 'Other ID', ic: '🪪', key: 'number', exp: 'expiry', due: 'Expires', fields: [f('number', 'ID number', 'text', { mono: 1, hide: 1 }), f('issuer', 'Issued by'), f('name', 'Name'), f('expiry', 'Valid until', 'date')] },
   dl: { n: 'Driving licence', ic: '🚘', key: 'number', exp: 'expiry', due: 'Expires', fields: [f('number', 'DL number', 'text', { up: 1, mono: 1, hide: 1, p: 'MH12 20190012345' }), f('name', 'Name'), f('classes', 'Vehicle classes', 'text', { up: 1, p: 'LMV, MCWG' }), f('rto', 'Issuing RTO'), f('issue', 'Date of issue', 'date'), f('expiry', 'Valid till', 'date')] },
   rc: { n: 'Vehicle RC', ic: '🚗', key: 'reg', exp: 'expiry', due: 'Registration ends', past: 'Registration ended', fields: [f('reg', 'Registration number', 'text', { up: 1, mono: 1, p: 'MH 12 AB 1234' }), f('model', 'Make & model'), f('owner', 'Registered owner'), f('chassis', 'Chassis number', 'text', { up: 1, mono: 1 }), f('engine', 'Engine number', 'text', { up: 1, mono: 1 }), f('regdate', 'Registration date', 'date'), f('expiry', 'Registration valid till', 'date')] },
@@ -673,7 +673,9 @@ async function onUnlock(form) {
     let vault; try { vault = JSON.parse(dec.decode(await decryptBytes(key, rec))); } catch { throw new Error('That passphrase didn’t open the cabinet.'); }
     vault.deleted = vault.deleted || {}; vault.settings = vault.settings || { autoLock: 5 };
     S.key = key; S.meta = meta; S.vault = vault; S.last = Date.now();
+    let migrated = 0; for (const it of vault.items) if (migrateItem(it)) { it.updated = Date.now(); migrated++; }
     let rescued = 0; for (const it of vault.items) if (rescueTitle(it)) { it.updated = Date.now(); rescued++; }
+    if (migrated && !rescued) await saveVault();
     if (rescued) { await saveVault(); setTimeout(() => toast(`Moved ${rescued} ID number${rescued > 1 ? 's' : ''} out of document labels so ${rescued > 1 ? 'they stay' : 'it stays'} hidden`), 400); }
     cleanupOrphans().catch(() => {});
     render();
@@ -886,6 +888,16 @@ function defaultTitle(it) {
   const t = T[it.type] || T.note; const kf = t.fields.find(x => x.k === t.key); const kv = (it.fields || {})[t.key];
   return t.card && it.fields && it.fields.bank ? `${it.fields.bank} ${lcName(t.n)}` : t.n + (it.owner ? ` · ${it.owner}` : kv && !isSecret(kf) ? ` ${kv}` : '');
 }
+const MOVED_FIELDS = { voter: [['constituency', 'Constituency'], ['part', 'Part no.']] };
+function migrateItem(it) {   // returns true if it changed the item
+  let ch = false;
+  for (const [k, l] of MOVED_FIELDS[it.type] || []) {
+    const v = it.fields && it.fields[k]; if (!v) continue;
+    it.custom = it.custom || []; if (!it.custom.some(c => c.l === l && c.v === v)) it.custom.push({ l, v });
+    delete it.fields[k]; ch = true;
+  }
+  return ch;
+}
 function rescueTitle(it) {   // returns true if it changed the item
   const t = T[it.type]; if (!t || !it.title) return false;
   it.fields = it.fields || {};
@@ -907,7 +919,7 @@ const CUSTOM_SUGGEST = {
   warranty: ['Installation date', 'Compressor / motor warranty', 'AMC / extended warranty no.', 'Service request no.'],
   health: ['Room rent limit', 'Co-pay', 'Waiting period'], life: ['Rider', 'Policy bond location'],
   motor_ins: ['Add-ons'], credit: ['Annual fee', 'Reward programme'], debit: ['Daily limit'],
-  bank: ['Locker no.', 'Debit card (last 4)'], property: ['Builder', 'Society / RWA'], utility: ['Plan'],
+  bank: ['Locker no.', 'Debit card (last 4)'], voter: ['Part no.', 'Polling station'], property: ['Builder', 'Society / RWA'], utility: ['Plan'],
 };
 function customRows(it) {
   return (it.custom || []).map((c, ix) => `<div class="crow"><input class="c-l" value="${esc(c.l)}" placeholder="Field name" maxlength="40" autocomplete="off" aria-label="Field name"><input class="c-v" value="${esc(c.v)}" placeholder="Value" maxlength="300" autocomplete="off" spellcheck="false" aria-label="Value"><button type="button" class="mini" data-act="c-del" data-ix="${ix}" aria-label="Remove this field">${icon('x')}</button></div>`).join('');
@@ -1350,11 +1362,28 @@ async function scanFiles(sources) {
         try { doc = await window.TijoriPDF.open(await s.bytes(), ocrBase(), wrong => askPdfPassword(s.name, wrong, type === 'aadhaar'), s.pw); }
         catch (e) { if (e.cancelled) { skipped.push(`${s.name} (no password)`); continue; } throw e; }
         if (doc.__password && doc.__remember && doc.__password !== s.pw) { if (s.att) await rememberPdfPassword(s.att.id, doc.__password); else if (s.file) pwForFile.set(s.file, doc.__password); }
+        const start = found.length; let textPages = 0;
         for await (const pg of window.TijoriPDF.pages(doc)) {
           if (pp.cancelled) break;
           const where = doc.numPages > 1 ? `${s.name}, page ${pg.page}` : s.name;
+          if (pg.kind === 'text') textPages++;
           const res = pg.kind === 'text' ? pg.ocr : await readImage(pg.canvas, `${label}Page ${pg.page}: `, f => frac((pg.page - 1 + f) / Math.min(doc.numPages, 8)));
           found.push({ ex: window.TijoriExtract.extract(type, res), from: where }); texts.push({ where, res });
+        }
+        // Some PDFs carry hidden text that doesn't match what's printed (scanner apps, odd fonts).
+        // If that text didn't give the key detail, read the pages as images as well.
+        if (!pp.cancelled && textPages && !found.slice(start).some(f => f.ex.fields[keyField])) {
+          const n = Math.min(doc.numPages, 3), asImage = [];
+          for (let k = 1; k <= n && !pp.cancelled; k++) {
+            const where = `${doc.numPages > 1 ? `${s.name}, page ${k}` : s.name} (read as image)`;
+            const c = await window.TijoriPDF.renderPage(doc, k, 2600, 1);
+            const res = await readImage(c, `${label}Page ${k}, reading the image: `, f => frac((k - 1 + f) / n));
+            asImage.push({ ex: window.TijoriExtract.extract(type, res), from: where }); texts.push({ where, res });
+          }
+          // The hidden text was wrong, so what the image read finds replaces it (it would otherwise
+          // compete with it, field by field). If the image read finds nothing, keep the text's guesses.
+          if (asImage.some(f => Object.keys(f.ex.fields).length)) found.splice(start, found.length - start, ...asImage);
+          else found.push(...asImage);
         }
         await window.TijoriPDF.close(doc);
       } else if ((s.mime || '').startsWith('image/')) {
@@ -1610,6 +1639,7 @@ async function importBackup(file) {
   }
   toast('Merging…');
   const st = mergeVault(S.vault, vault);
+  for (const it of S.vault.items) migrateItem(it);
   const need = new Set(); S.vault.items.forEach(it => (it.attachments || []).forEach(a => { need.add(a.id); if (a.thumb) need.add(a.id + ':t'); }));
   const have = new Set(await blobKeys());
   for (const k of need) {

@@ -1,4 +1,4 @@
-/* Tijori — turn OCR lines into suggested field values, per document type.
+/* Tijori \u2014 turn OCR lines into suggested field values, per document type.
    Pure functions, no network, no DOM.  window.TijoriExtract.extract(type, ocr) -> { fields: {k: {value, conf}}, title? }
    ocr = { lines: [{ text, items: [{ text, ... }] }] }  */
 (function () {
@@ -8,7 +8,7 @@
   const MONTHS = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, sept: 9, oct: 10, nov: 11, dec: 12 };
   const pad = n => String(n).padStart(2, '0');
   const clean = s => String(s || '').replace(/\s+/g, ' ').trim();
-  const stripSep = s => clean(s).replace(/^[\s:;.\-–—=|]+/, '').replace(/[\s:;|,]+$/, '').trim();
+  const stripSep = s => clean(s).replace(/^[\s:;.\-\u2013\u2014=|]+/, '').replace(/[\s:;|,]+$/, '').trim();
 
   function isoFrom(d, m, y) {
     d = +d; m = +m; y = +y; if (y < 100) y += y > 60 ? 1900 : 2000;
@@ -19,7 +19,7 @@
   // all dates in a string, in order (Indian dd/mm/yyyy convention)
   function dates(s) {
     const out = []; s = String(s || '');
-    const re = /(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})|(\d{1,2})\s*[\/\-.]\s*(\d{1,2})\s*[\/\-.]\s*(\d{4}|\d{2})(?!\d)|(\d{1,2})(?:st|nd|rd|th)?[\s\-.]*([A-Za-z]{3,9})[\s\-.,]*(\d{4})/g;
+    const re = /(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})|(\d{1,2})\s*[\/\-.]\s*(\d{1,2})\s*[\/\-.]\s*(\d{4}|\d{2})(?!\d)|(\d{1,2})(?:st|nd|rd|th)?[\s\-.\/]*([A-Za-z]{3,9})[\s\-.,\/]*(\d{4})/g;
     let m;
     while ((m = re.exec(s))) {
       let iso = null;
@@ -33,7 +33,7 @@
   const firstDate = s => (dates(s)[0] || {}).iso || null;
   function amount(s) {
     s = String(s || '').replace(/(\d)[.\s](?=\d{3}(?:[^\d]|$))/g, '$1,');   // OCR often reads 24,318 as 24.318 or 24 318
-    const m = /(?:rs\.?|inr|₹)?\s*([0-9]{1,3}(?:,[0-9]{2,3})+(?:\.[0-9]{1,2})?|[0-9]{3,}(?:\.[0-9]{1,2})?)/i.exec(s);
+    const m = /(?:rs\.?|inr|\u20b9)?\s*([0-9]{1,3}(?:,[0-9]{2,3})+(?:\.[0-9]{1,2})?|[0-9]{3,}(?:\.[0-9]{1,2})?)/i.exec(s);
     return m ? m[1] : null;
   }
   function phone(s) {
@@ -59,7 +59,7 @@
     return d[a.length][b.length];
   }
   function byLabel(ocr, labelRe, opts = {}) {
-    const { below = true, notRe = null, accept = v => !!v, fuzzy = null, squash = null } = opts;
+    const { below = true, notRe = null, accept = v => !!v, fuzzy = null, squash = null, belowLines = 1 } = opts;
     const L = ocr.lines;
     for (let li = 0; li < L.length; li++) {
       const items = L[li].items && L[li].items.length ? L[li].items : [{ text: L[li].text }];
@@ -75,15 +75,15 @@
         if (rest && accept(rest)) return rest;
         // "Plan | Policy Start | Policy Expiry" with values underneath: the neighbours are labels too, not values
         const labelish = x => !/\d/.test(x) && !/:/.test(x) && x.trim().split(/\s+/).length <= 4;
-        const LABEL_WORD = /\b(date|issue|expiry|valid\w*|start|end|from|till|upto|number|no|name|plan|premium|sum|amount|type|class|group|donor|code|period|policy|insured|nominee|branch|ifsc|status|birth|dob|doi|gender|sex|blood|organ|mode|term|tenure|cover)\b/i;
+        const LABEL_WORD = /\b(date|issue|expiry|valid\w*|start|end|from|till|upto|number|no|name|plan|premium|sum|amount|type|class|group|donor|code|period|policy|insured|nominee|branch|ifsc|status|birth|dob|doi|gender|sex|blood|organ|mode|term|tenure|cover|colou?r|fuel|norms?|emission|body|seating|capacity|weight|maker|model|chassis|engine|owner|address|financier|authority|vehicle|cubic|horse|power|wheel|base|registering|regn|relation|nationality|occupation|place|member|holder|issued|validity|serial|month|year)\b/i;
         const headerRow = items.length >= 2 && items.every(x => labelish(x.text)) && (items.length >= 3 || items.every(x => LABEL_WORD.test(x.text))) &&
           L[li + 1] && (L[li + 1].items || []).some(x => /\d|[A-Za-z]{2}/.test(x.text));
         const next = headerRow ? '' : items.slice(ii + 1).map(x => x.text).join(' ');
         const nv = stripSep(next);
         if (nv && accept(nv)) return nv;
-        if (below && L[li + 1]) {
+        for (let k = 1; below && k <= belowLines && L[li + k]; k++) {
           // value printed under the label: take the item in the next line that sits below it, not just the first one
-          const it = items[ii], nItems = L[li + 1].items && L[li + 1].items.length ? L[li + 1].items : [{ text: L[li + 1].text }];
+          const it = items[ii], nItems = L[li + k].items && L[li + k].items.length ? L[li + k].items : [{ text: L[li + k].text }];
           let pick = nItems[0];
           if (it.x0 != null && it.w && nItems.every(n => n.x0 != null)) {
             const lc = it.x0 + it.w * Math.min(1, (m.index + m[0].length / 2) / Math.max(1, t.length));   // centre of the label text
@@ -97,7 +97,23 @@
     return null;
   }
   const allText = ocr => ocr.lines.map(l => l.text).join('\n');
-  const isNameLike = v => /^[A-Za-z][A-Za-z .'\-]{2,40}$/.test(v) && v.split(/\s+/).length <= 5 && !/\d/.test(v);
+  // an address: text after the label plus the following lines, until another label, a date or an officer line
+  function addressAfter(ocr, re, max = 3) {
+    const L = ocr.lines.map(l => clean(l.text));
+    const i = L.findIndex(l => re.test(l)); if (i < 0) return null;
+    const out = []; const first = stripSep(L[i].replace(re, '').replace(/^.*?(address)\s*/i, ''));
+    if (first.length > 3) out.push(first);
+    for (let k = i + 1; k < L.length && out.length < max; k++) {
+      const t = L[k];
+      if (/(date|electoral|registration|officer|constituency|signature|:)/i.test(t) || dates(t).length || !/[A-Za-z0-9]{2}/.test(t) || /[^\x00-\x7F\u20b9]/.test(t)) break;
+      out.push(t);
+    }
+    const v = out.join(', ').replace(/,\s*,/g, ',');
+    return v.length >= 8 ? v : null;
+  }
+  // a person's name: letters only, a few words, and not the rest of a label ("of Elector", "Father's Name")
+  const isNameLike = v => /^[A-Za-z][A-Za-z .'\-]{2,40}$/.test(v) && v.split(/\s+/).length <= 5 && !/\d/.test(v) &&
+    !/^(of|s\/o|d\/o|w\/o)\b/i.test(v) && !/\b(name|elector|father|mother|husband|gender|sex|age|birth|card|identity|commission|election|government|republic|signature|address)\b/i.test(v);
   const titleCase = s => s.toLowerCase().replace(/\b([a-z])/g, c => c.toUpperCase());
   const nameOut = v => v && (v === v.toUpperCase() ? v : titleCase(v));
 
@@ -195,7 +211,7 @@
   function icao(s) { const w = [7, 3, 1]; let t = 0; for (let i = 0; i < s.length; i++) { const c = s[i]; t += (c === '<' ? 0 : /\d/.test(c) ? +c : c.charCodeAt(0) - 55) * w[i % 3]; } return String(t % 10); }
   function mrz(text, ocr) {   // passport machine-readable zone (the two lines full of <<<)
     const raw = ocr ? ocr.lines.map(l => (l.items && l.items.length ? l.items.map(i => i.text).join('') : l.text)) : text.split('\n');
-    const lines = raw.map(l => l.toUpperCase().replace(/\s/g, '').replace(/[«‹(\[{]/g, '<')).filter(l => (l.match(/</g) || []).length >= 3 && l.length >= 28);
+    const lines = raw.map(l => l.toUpperCase().replace(/\s/g, '').replace(/[\u00ab\u2039(\[{]/g, '<')).filter(l => (l.match(/</g) || []).length >= 3 && l.length >= 28);
     let p2 = null, l2 = null;
     for (const l of lines) {
       const dob = l.slice(13, 19).split('').map(toDigit).join(''), exp = l.slice(21, 27).split('').map(toDigit).join('');
@@ -242,7 +258,7 @@
       if (plus && !PART.test(t)) { const a = toN(plus[1]), b = toN(plus[2]); if (a && b && !out.months) { out.months = toM(a + b, plus[3]); out.extendedMonths = toM(b, plus[3]); out.extended = `${b} ${/^y/i.test(plus[3]) ? (b > 1 ? 'years' : 'year') : 'months'} extended (included)`; } continue; }
       // every "<n> <unit>", judged within its own clause ("1 year on product, 10 years on compressor")
       for (const clause of t.split(/[,;]|\band\b/i)) {
-        const re = new RegExp('\\b' + NUM + '\\s*[-–]?\\s*' + UNIT + '\\b', 'gi'); let m;
+        const re = new RegExp('\\b' + NUM + '\\s*[-\u2013]?\\s*' + UNIT + '\\b', 'gi'); let m;
         const part = PART.exec(clause), ext = /extend/i.test(clause);
         while ((m = re.exec(clause))) {
           const n = toN(m[1]); if (!n || n > 120) continue;
@@ -261,7 +277,7 @@
   /* ---------- per-type extractors ---------- */
   const X = {
     pan(o, T) {
-      let name = textAfter(o, /^(name|नाम\s*\/\s*name)\b/i, { notRe: /father/i, accept: isNameLike, fuzzy: 'name' });
+      let name = textAfter(o, /^(name|\u0928\u093e\u092e\s*\/\s*name)\b/i, { notRe: /father/i, accept: isNameLike, fuzzy: 'name' });
       let father = textAfter(o, /father'?s\s*name/i, { accept: isNameLike });
       // fallback on the card's fixed layout: number, then holder's name, then father's name
       const num = panNumber(T);
@@ -309,7 +325,25 @@
     },
     voter(o, T) {
       const m = /\b([A-Z]{3})(\d{7})\b/.exec(T.toUpperCase().replace(/[^\S\n]+/g, ''));
-      return { number: m ? { value: m[1] + m[2], conf: 'high' } : null, name: textAfter(o, /(elector'?s\s*name|name)/i, { notRe: /(father|husband|mother)/i, accept: isNameLike }) };
+      const g = /(gender|sex)\b[^\n]{0,30}?\b(male|female|transgender|third\s*gender)\b/i.exec(T) || /(gender|sex)\s*[:\-]?\s*(m|f)\b/i.exec(T);
+      const ac = textAfter(o, /(assembly\s*constituency|constituency|vidhan\s*sabha)\s*(no\.?\s*(&|and)\s*name)?/i, { accept: v => /[A-Za-z]{3}/.test(v) && v.length < 60 });
+      let ero = textAfter(o, /(electoral\s*registration\s*officer|registration\s*officer|\be\.?r\.?o\b\.?)/i, { belowLines: 3, accept: v => /constituency|\d+\s*[-\u2013]\s*[A-Za-z]/i.test(v) && /^[\x00-\x7F]+$/.test(v) });
+      if (!ero) { const l = o.lines.map(x => clean(x.text)).find(x => /^\d{1,3}\s*[-\u2013]\s*[A-Za-z][A-Za-z .]+assembly\s*constituency/i.test(x)); if (l) ero = l; }
+      if (!ero && ac) ero = /constituency/i.test(ac) ? ac : `${ac} Assembly Constituency`;
+      const part = textAfter(o, /part\s*(no\.?|number)\s*(&|and)?\s*(name)?/i, { accept: v => /\d/.test(v) && v.length < 60 });
+      let vDob = dateAfter(o, /(date\s*of\s*birth|\bdob\b|birth)/i, { squash: /dateofb|ofbirth|dob/ });
+      let vIssue = dateAfter(o, /(date\s*of\s*issue|issue\s*date|\bdated?\b)/i, { notRe: /(birth|dob)/i });
+      // a date more than 18 years old can't be this card's issue date: it's the date of birth with a misread label
+      if (vIssue && +vIssue.slice(0, 4) < new Date().getFullYear() - 18 && !/(issue)/i.test(T)) { if (!vDob) vDob = vIssue; vIssue = null; }
+      if (vIssue && vDob && vIssue === vDob) vIssue = null;
+      return { number: m ? { value: m[1] + m[2], conf: 'high' } : null,
+        name: textAfter(o, /(elector'?\u2019?s?\s*name|name\s*of\s*(the\s*)?elector|\bname\b)/i, { notRe: /(father|husband|mother|relation|guardian)/i, accept: isNameLike, fuzzy: 'name' }),
+        relative: textAfter(o, /((father|husband|mother|guardian|relation)'?\u2019?s?\s*name|name\s*of\s*(father|husband|mother|guardian))/i, { accept: isNameLike }),
+        dob: vDob,
+        gender: g ? (/^f/i.test(g[2]) ? 'Female' : /^m/i.test(g[2]) ? 'Male' : 'Other') : null,
+        address: addressAfter(o, /\baddress\b/i),
+        issue: vIssue,
+        ero, _custom: part ? [{ l: 'Part no.', v: part }] : [] };
     },
     id_other(o, T) { return { number: idAfter(o, /(id\s*no|number|no\.)/i), name: textAfter(o, /name/i, { accept: isNameLike }), expiry: dateAfter(o, /(valid|expiry|expires)/i) }; },
     dl(o, T) {
@@ -327,7 +361,25 @@
       return { number: num, name: textAfter(o, /^name\b/i, { accept: isNameLike, fuzzy: 'name' }), classes: classes ? [...new Set(classes)].join(', ') : null, rto: rto ? rto.toUpperCase().replace(/^.*?(?=\b(RTO|DTO|ARTO))/, '').replace(/^(ARTO|RTO|DTO)(?=[A-Z])/, '$1 ') : null, issue, expiry };
     },
     rc(o, T) {
-      return { reg: vehicleReg(T), model: textAfter(o, /(maker'?s?\s*(name|class)?|model|make)/i, { accept: v => v.length > 2 }), owner: textAfter(o, /owner'?s?\s*name|owner/i, { accept: isNameLike }), chassis: (m => m ? { value: m[0], conf: 'high' } : idAfter(o, /chassis|vin/i, 10))(/\b[A-HJ-NPR-Z0-9]{17}\b/.exec(T.toUpperCase())), engine: idAfter(o, /engine/i, 5), regdate: dateAfter(o, /(reg(n|istration)?\.?\s*date|date\s*of\s*reg)/i), expiry: dateAfter(o, /(reg(n|istration)?\.?\s*(valid|upto)|valid\s*upto|fitness\s*upto)/i) };
+      let regdate = dateAfter(o, /(reg(n|d|istration)?\.?\s*(date|dt)\b|date\s*of\s*reg(n|d|istration)?|registered\s*on|regn?\.?\s*on\b)/i);
+      let expiry = dateAfter(o, /(reg(n|d|istration)?\.?\s*(valid(ity)?|up\s*to|upto|till)|valid\s*up\s*to|valid\s*upto|valid\s*till|fitness\s*(\/\s*regn?\.?)?\s*up\s*to|fitness\s*(\/\s*regn?\.?)?\s*upto)/i);
+      // safety net: on an RC the earliest full date is registration and the latest is validity (usually 15 years later)
+      const ds = [...new Set(dates(T).map(d => d.iso))].sort();
+      if (!regdate && ds.length >= 2) regdate = ds[0];
+      if (!expiry && ds.length >= 2 && +ds[ds.length - 1].slice(0, 4) - +ds[0].slice(0, 4) >= 4) expiry = ds[ds.length - 1];
+      if (regdate && expiry && expiry <= regdate) expiry = null;
+      return { reg: vehicleReg(T),
+        model: (() => {   // "Maker Name" + "Model Name" -> "MARUTI SUZUKI SWIFT VXI"
+          const ok = v => v.length > 1 && !/^(model|name|class|maker)$/i.test(v);
+          const model = textAfter(o, /(maker\s*model|model\s*name|\bmodel\b)/i, { notRe: /maker\s*name/i, accept: ok });
+          const maker = textAfter(o, /(maker'?s?\s*name|maker'?s?\s*class|\bmaker\b|\bmake\b)/i, { notRe: /model/i, accept: ok });
+          const mk = maker ? maker.replace(/india\s*(pvt\.?\s*)?(ltd|limited)\.?/gi, ' ').replace(/\b(india|pvt\.?|private|ltd\.?|limited|co\.?|motor\s*company|motors?\s*ltd)\b\.?/gi, '').replace(/\s+/g, ' ').trim() : '';
+          if (model && mk && !model.toUpperCase().startsWith(mk.toUpperCase().split(' ')[0])) return `${mk} ${model}`;
+          return model || maker || null;
+        })(),
+        owner: textAfter(o, /(owner'?s?\s*name|\bowner\b|^name\b)/i, { notRe: /(maker|father|son|wife|daughter)/i, accept: isNameLike }),
+        chassis: (m => m ? { value: m[0], conf: 'high' } : idAfter(o, /(chassis|vin|ch\.?\s*no)/i, 10))(/\b[A-HJ-NPR-Z0-9]{17}\b/.exec(T.toUpperCase())),
+        engine: idAfter(o, /((engine|motor)\s*(\/\s*motor)?\s*(no|number)?|\be\.?\s*no\b)/i, 5), regdate, expiry };
     },
     motor_ins(o, T) {
       const p = periodDates(o);
@@ -359,7 +411,7 @@
       if (!expiry && purchase && w.months) expiry = { value: addMonthsIso(purchase, w.months), conf: 'medium', hint: `Worked out: purchase date + ${w.months % 12 ? w.months + ' months' : (w.months / 12) + (w.months === 12 ? ' year' : ' years')}${w.extendedMonths ? ' (includes extended warranty)' : ''}` };
       const custom = w.parts.map(pt => ({ l: `${pt.part} warranty`, v: `${pt.text}${purchase ? ` (till ${fmtIso(addMonthsIso(purchase, pt.months))})` : ''}` }));
       const item = textAfter(o, /^(i?tem|product|description|particulars)\b/i, { accept: v => /[A-Za-z]{3}/.test(v) });
-      const seller = (() => { for (const l of o.lines.slice(0, 4)) { const t = clean(l.items && l.items[0] ? l.items[0].text : l.text); if (/[A-Za-z]{3}/.test(t) && !/(tax\s*invoice|invoice|bill|receipt|gstin|original)/i.test(t)) return t.replace(/\s*[-–]\s*.*$/, '').replace(/\s*(pvt\.?|private)?\s*(ltd\.?|limited)\s*$/i, ''); } return null; })();
+      const seller = (() => { for (const l of o.lines.slice(0, 4)) { const t = clean(l.items && l.items[0] ? l.items[0].text : l.text); if (/[A-Za-z]{3}/.test(t) && !/(tax\s*invoice|invoice|bill|receipt|gstin|original)/i.test(t)) return t.replace(/\s*[-\u2013]\s*.*$/, '').replace(/\s*(pvt\.?|private)?\s*(ltd\.?|limited)\s*$/i, ''); } return null; })();
       const brand = textAfter(o, /^brand\b/i, { accept: v => v.length >= 2 && v.length < 25 }) || brandIn((item || '') + '\n' + T);
       const product = item ? clean(item.replace(new RegExp('^' + (brand || '@@').replace(/ /g, '\\s*') + '(?=\\s|\\d)\\s*', 'i'), '')) : null;
       return { product, brand, model: idAfter(o, /mode[ltI1i]\s*(no|number|name)?/i, 3), serial: idAfter(o, /(serial\s*(no|number)?|s\/n|sr\.?\s*no|imei)/i, 5), seller, invoice: idAfter(o, /(invoice|bill|receipt)\s*(no|number|#)/i, 4), price: amountAfter(o, /(grand\s*total|net\s*amount|total\s*amount|invoice\s*value|amount\s*payable|total)/i), purchase, months: w.months ? String(w.months) : null, expiry, extended: w.extended, service: phoneAfter(o, /(customer\s*care|service|helpline|toll\s*free|call)/i), _title: product ? (brand ? `${brand} ${product}` : product) : null, _custom: custom };
@@ -380,7 +432,7 @@
   X.debit = X.credit;
 
   function extract(type, ocr) {
-    // fold full-width punctuation (：，／) and odd spacing that OCR models sometimes emit
+    // fold full-width punctuation (\uff1a\uff0c\uff0f) and odd spacing that OCR models sometimes emit
     ocr = { lines: ocr.lines.map(l => ({ ...l, text: l.text.normalize('NFKC'), items: (l.items || []).map(i => ({ ...i, text: i.text.normalize('NFKC') })) })) };
     const T = allText(ocr);
     const fn = X[type] || X.note;

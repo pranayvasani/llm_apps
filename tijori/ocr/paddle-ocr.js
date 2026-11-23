@@ -125,7 +125,7 @@
   }
 
   function crop(src, x, y, w, h, maxSide) {
-    const s = Math.min(1, maxSide / Math.max(w, h)), c = document.createElement('canvas');
+    const s = Math.min(1.6, maxSide / Math.max(w, h)), c = document.createElement('canvas');   // small text areas are enlarged a little for the detector
     c.width = Math.max(1, Math.round(w * s)); c.height = Math.max(1, Math.round(h * s));
     c.getContext('2d', { willReadFrequently: true }).drawImage(src, x, y, w, h, 0, 0, c.width, c.height); return c;
   }
