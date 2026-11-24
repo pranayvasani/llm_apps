@@ -207,6 +207,15 @@ code{font-family:var(--mono);font-size:.92em;background:#ffffff14;padding:1px 5p
 .sheet .btn.primary{background:linear-gradient(180deg,var(--brass1),var(--brass2));color:#231a06;border-color:transparent}
 .sheet .btn.danger{background:#e5484d14;color:#b4232a;border-color:#e5484d55}
 .mv{font:inherit;font-size:13.5px;font-weight:650;padding:8px 10px;border-radius:10px;border:1px solid #00000020;background:#00000009;color:var(--paper-ink)}
+.renew{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:space-between;margin:-4px 0 16px;padding:10px 12px;border-radius:12px;background:#fdf3d8;color:#5a4300;font-size:13.5px}
+.renew.expired{background:#fde4e1;color:#7a1c12}.renew span{flex:1 1 160px}
+.hist{list-style:none;margin:0;padding:0}.hist li{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(0,0,0,.07);font-size:14px}
+.hist small{display:block;color:var(--paper-muted);font-size:11.5px;margin-top:2px}
+.steps{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 4px}.chip-btn{border:1px solid color-mix(in srgb,currentColor 35%,transparent);background:transparent;color:inherit;border-radius:999px;padding:5px 11px;font:inherit;font-size:13px;cursor:pointer}
+.chip-btn.on{background:#e3c36a;color:#2b2100;border-color:transparent;font-weight:600}.rn-base{font-size:12.5px;margin:0 2px 6px}
+.ck{display:flex!important;flex-direction:row!important;align-items:center;gap:8px}.ck input{width:auto!important;margin:0}
+.rn-or{display:flex;align-items:center;gap:10px;margin:14px 0 10px;color:var(--paper-muted);font-size:12.5px}.rn-or::before,.rn-or::after{content:'';flex:1;border-top:1px solid color-mix(in srgb,currentColor 25%,transparent)}
+.btn.wide{width:100%;justify-content:center}.modal .btn.rn-hidden{display:none}
 .stamp{font-size:11.5px;color:var(--paper-muted);margin-top:16px}
 
 .pcard{--h:220;position:relative;max-width:360px;aspect-ratio:1.586;border-radius:16px;padding:16px 20px;color:#fff;background:linear-gradient(135deg,hsl(var(--h) 52% 38%),hsl(calc(var(--h) + 40) 58% 15%));box-shadow:0 14px 28px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.25);display:flex;flex-direction:column;justify-content:space-between;margin:0 auto 20px;overflow:hidden}
@@ -329,7 +338,7 @@ body:has(.modal-ov) .toast{bottom:auto;top:calc(16px + env(safe-area-inset-top))
      so the browser blocks every fetch/XHR/WebSocket/beacon.
    ========================================================= */
 
-const APP_VERSION = '2026-11-23.3';   // bump with every release; shown in Settings
+const APP_VERSION = '2026-11-24.1';   // bump with every release; shown in Settings
 const ITER = 600000;
 const DB_NAME = 'tijori';
 const enc = new TextEncoder(), dec = new TextDecoder();
@@ -563,6 +572,84 @@ function dueInfo(it) {
   return { date: e, days, cls, txt, short, attention: cls === 'expired' || cls === 'soon' };
 }
 function allDue() { return S.vault.items.map(it => ({ it, d: dueInfo(it) })).filter(x => x.d).sort((a, b) => a.d.days - b.d.days); }
+
+/* ---------- renewals: record the next due date, keep the old one ---------- */
+const expDate = (t, v) => { const fd = t.fields.find(x => x.k === t.exp); return fd && fd.t === 'mmyy' ? parseMMYY(v) : parseDate(v); };
+const renewable = it => { const t = T[it.type]; return !!(t && t.exp && !t.ends); };
+const addMonthsKeepDay = (d, n) => { const r = new Date(d.getFullYear(), d.getMonth() + n, 1); r.setDate(Math.min(d.getDate(), new Date(r.getFullYear(), r.getMonth() + 1, 0).getDate())); return r; };
+function renewSteps(it) {
+  const ty = it.type;
+  if (ty === 'life') { const f = String((it.fields || {}).freq || '').toLowerCase(); const d = /month/.test(f) ? 1 : /quart/.test(f) ? 3 : /half|semi|6/.test(f) ? 6 : 12; return { steps: [1, 3, 6, 12], def: d }; }
+  if (ty === 'passport') return { steps: [60, 120], def: 120 };
+  if (ty === 'dl') return { steps: [60, 120], def: 60 };
+  if (ty === 'rc') return { steps: [60], def: 60 };
+  if (ty === 'credit' || ty === 'debit') return { steps: [36, 48, 60], def: 60 };
+  if (ty === 'puc') return { steps: [6, 12], def: 12 };
+  return { steps: [6, 12, 24, 36], def: 12 };
+}
+const stepLabel = m => m % 12 ? `+${m} month${m > 1 ? 's' : ''}` : `+${m / 12} year${m > 12 ? 's' : ''}`;
+const renewWord = it => it.type === 'life' ? 'Premium paid' : 'Renewed';
+function historyHTML(it) {
+  const h = it.history || []; if (!h.length) return '';
+  const t = T[it.type]; const kf = t.fields.find(x => x.k === t.key);
+  const was = t.type === 'life' || it.type === 'life' ? 'Premium was due' : t.ends ? 'Ended' : 'Was due';
+  return `<h3 class="sec">${it.type === 'life' ? 'Premium history' : 'Renewal history'}</h3><ul class="hist">${h.map((x, i) => {
+    const d = expDate(t, x.d); const k = x.k && kf ? ` · ${esc(kf.l.toLowerCase())} was ${esc(isSecret(kf) ? mask(x.k, kf) : x.k)}` : '';
+    return `<li><span>${esc(was)} ${esc(d ? (t.fields.find(f => f.k === t.exp).t === 'mmyy' ? x.d : fmtDate(d)) : x.d)}${k}<small>Recorded ${esc(fmtDate(new Date(x.at)))}</small></span>${i === 0 ? `<button class="btn sm" data-act="renew-undo" data-id="${esc(it.id)}">Undo</button>` : ''}</li>`;
+  }).join('')}</ul>`;
+}
+function pushHistory(it, oldExp, oldKey, at) {
+  it.history = [{ d: oldExp, at, ...(oldKey ? { k: oldKey } : {}) }, ...(it.history || [])].slice(0, 30);
+}
+async function renewItem(id) {
+  const it = itemById(id); if (!it || !renewable(it)) return;
+  const t = T[it.type]; const efd = t.fields.find(x => x.k === t.exp); const mmyy = efd.t === 'mmyy';
+  const old = expDate(t, it.fields[t.exp]); const { steps, def } = renewSteps(it);
+  const lapsed = old && (today0() - old) / DAY > 30;
+  const base = !old || lapsed ? new Date(today0().getTime() - DAY) : old;   // a lapsed cover usually restarts today
+  const fmtV = d => mmyy ? `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getFullYear()).slice(2)}` : isoDate(d);
+  const kf = t.fields.find(x => x.k === t.key); const askKey = kf && it.type !== 'life' && !t.card;
+  const isLife = it.type === 'life';
+  const html = `<p>${old ? `${esc(t.past && dueInfo(it).days < 0 ? t.past : (t.due || 'Expires'))} ${esc(mmyy ? it.fields[t.exp] : fmtDate(old))}.` : ''} ${isLife ? 'Record when the next premium is due.' : 'Record the new date. The old one is kept in the history.'}</p>
+    <div class="mf"><label>${esc(isLife ? 'Next premium due' : `New ${efd.l.toLowerCase()}`)}${mmyy ? `<input id="rn-d" inputmode="numeric" placeholder="MM/YY" maxlength="5">` : `<input id="rn-d" type="date">`}</label>
+    <div class="steps">${steps.map(m => `<button type="button" class="chip-btn${m === def ? ' on' : ''}" data-m="${m}">${stepLabel(m)}</button>`).join('')}</div>
+    <p class="muted rn-base">Counted from ${lapsed ? 'today, since it lapsed over a month ago' : !old ? 'today' : `the old date`}.</p>
+    ${askKey ? `<label>New ${esc(kf.l.toLowerCase())} <span class="muted">(only if it changed)</span><input id="rn-k" autocomplete="off" spellcheck="false"${kf.up ? ' style="text-transform:uppercase"' : ''}></label>` : ''}
+    <label class="ck"><input type="checkbox" id="rn-cal" checked> Remind me in my calendar</label></div>
+    ${isLife ? '' : `<div class="rn-or"><span>or</span></div><label class="btn wide">${icon('camera')} Scan the new ${it.type.endsWith('ins') || it.type === 'health' ? 'policy' : 'document'} instead<input type="file" id="rn-f" accept="image/*,application/pdf" multiple hidden></label><p class="muted" style="font-size:12.5px;margin:6px 2px 0">Reads the new date, number and premium, and attaches the file. You check them before saving.</p>`}`;
+  const r = await modal({ title: isLife ? 'Premium paid?' : 'Renewed?', html,
+    actions: [{ label: 'Cancel', value: null }, { label: 'scan', cls: 'rn-hidden', value: ov => ({ files: ov._files }) },
+      { label: isLife ? 'Save' : 'Save new date', cls: 'primary', value: ov => {
+        const v = ov.querySelector('#rn-d').value.trim(); const d = mmyy ? parseMMYY(v) : parseDate(v);
+        if (!d) { ov.querySelector('#rn-d').focus(); toast(mmyy ? 'Enter the date like 08/31' : 'Pick the new date'); return undefined; }
+        if (old && d <= old) { toast('The new date should be after the old one'); return undefined; }
+        const k = ov.querySelector('#rn-k'); return { v: mmyy ? fmtV(d) : isoDate(d), d, key: k && k.value.trim() ? (kf.up ? k.value.trim().toUpperCase() : k.value.trim()) : '', cal: ov.querySelector('#rn-cal').checked };
+      } }],
+    onOpen: ov => {
+      const inp = ov.querySelector('#rn-d'); const setM = m => { inp.value = fmtV(addMonthsKeepDay(base, m)); ov.querySelectorAll('.chip-btn').forEach(b => b.classList.toggle('on', +b.dataset.m === m)); };
+      setM(def);
+      ov.querySelector('.steps').addEventListener('click', e => { const b = e.target.closest('.chip-btn'); if (b) setM(+b.dataset.m); });
+      inp.addEventListener('input', () => ov.querySelectorAll('.chip-btn').forEach(b => b.classList.remove('on')));
+      const f = ov.querySelector('#rn-f'); if (f) f.addEventListener('change', () => { if (f.files.length) { ov._files = [...f.files]; ov.querySelector('.rn-hidden').click(); } });
+    } });
+  if (!r) return;
+  if (r.files) { S.renewScan = { id, files: r.files }; location.hash = '#/edit/' + id; return; }   // history is kept when the edit is saved
+  const now = Date.now();
+  const oldKey = r.key && r.key !== it.fields[t.key] ? it.fields[t.key] : '';
+  pushHistory(it, it.fields[t.exp], oldKey, now);
+  it.fields[t.exp] = r.v; if (oldKey) it.fields[t.key] = r.key;
+  it.updated = now; await saveVault(); render();
+  toast(it.type === 'life' ? `Next premium due ${fmtDate(r.d)}` : `${renewWord(it)} till ${mmyy ? r.v : fmtDate(r.d)}`);
+  if (r.cal && dueInfo(it).days >= 0) download(new Blob([icsWrap([icsEvent(it)])], { type: 'text/calendar' }), `${it.title.replace(/[^\w\- ]+/g, '').trim() || 'reminder'}.ics`);
+}
+async function undoRenew(id) {
+  const it = itemById(id); const h = it && it.history && it.history[0]; if (!h) return;
+  const t = T[it.type];
+  if (!await confirmM('Undo the last renewal?', `The date goes back to ${t.fields.find(x => x.k === t.exp).t === 'mmyy' ? h.d : fmtDate(h.d)}${h.k ? ' and the old number comes back' : ''}. Files you attached stay.`, 'Undo')) return;
+  it.fields[t.exp] = h.d; if (h.k) it.fields[t.key] = h.k;
+  it.history = it.history.slice(1); if (!it.history.length) delete it.history;
+  it.updated = Date.now(); await saveVault(); render(); toast('Undone');
+}
 const attentionCount = () => allDue().filter(x => x.d.attention).length;
 
 /* ---------- UI helpers ---------- */
@@ -770,12 +857,14 @@ function vItem(id) {
    <article class="sheet">
     ${t.card ? cardHTML(it) : ''}
     <div class="meta-line"><span>${t.ic} ${esc(t.n)}</span>${it.owner ? `<span>· ${esc(it.owner)}</span>` : ''}${di ? `<span class="chip ${di.cls}">${esc(di.txt)}</span>` : ''}</div>
+    ${di && renewable(it) && di.days <= 90 ? `<div class="renew ${di.cls}"><span>${it.type === 'life' ? 'Paid this premium? Record the next due date.' : 'Renewed already? Record the new date.'}</span><button class="btn sm primary" data-act="renew" data-id="${esc(it.id)}">${icon('cal')} ${renewWord(it)}…</button></div>` : ''}
     ${rows ? `<dl class="rows">${rows}</dl>` : `<p class="muted-p">No details yet. <a href="#/edit/${esc(it.id)}">Add them</a>.</p>`}
     ${it.notes ? `<h3 class="sec">Notes</h3><div class="notes">${esc(it.notes)}</div>` : ''}
     <h3 class="sec">Scans & files</h3>
     ${atts.length ? `<div class="atts">${atts.map(a => attHTML(a, false)).join('')}</div>
       <div class="att-add"><button class="btn sm primary" data-act="share-atts" data-id="${esc(it.id)}">${icon('share')} Share ${atts.length > 1 ? `all ${atts.length} scans` : 'scan'}</button>${atts.some(scannable) ? `<button class="btn sm" data-act="read-atts" data-id="${esc(it.id)}">${icon('camera')} Read details from ${atts.filter(scannable).length > 1 ? 'these files' : 'this file'}</button>` : ''}</div>`
       : `<p class="muted-p">No scans yet. <a href="#/edit/${esc(it.id)}">Add a photo or PDF</a>.</p>`}
+    ${historyHTML(it)}
     <div class="sheet-actions">
       ${di && di.days >= 0 ? `<button class="btn sm" data-act="ics" data-id="${esc(it.id)}">${icon('cal')} Remind me in my calendar</button>` : ''}
       <select class="mv" data-change="move" data-id="${esc(it.id)}" aria-label="Move to drawer"><option value="" selected disabled>Move to drawer…</option>${sortedDrawers().filter(x => x.id !== it.drawerId).map(x => `<option value="${esc(x.id)}">${esc(x.icon)} ${esc(x.name)}</option>`).join('')}</select>
@@ -962,6 +1051,12 @@ async function saveDraft(form) {
   if (!it.title) it.title = defaultTitle(it);
   const now = Date.now(); if (dr.isNew) it.created = now; it.updated = now;
   const V = S.vault; const idx = V.items.findIndex(x => x.id === it.id);
+  const prev = idx >= 0 ? V.items[idx] : null;
+  if (prev && renewable(it)) {   // the due date moved later: that's a renewal, so keep the old date
+    const o = (prev.fields || {})[t.exp], n = it.fields[t.exp], od = o && expDate(t, o), nd = n && expDate(t, n);
+    it.history = prev.history;
+    if (od && nd && nd > od) pushHistory(it, o, prev.fields[t.key] && prev.fields[t.key] !== it.fields[t.key] ? prev.fields[t.key] : '', now);
+  }
   if (idx < 0) V.items.push(it); else V.items[idx] = it;
   const keep = new Set(it.attachments.map(a => a.id));
   for (const id of dr.orig) if (!keep.has(id)) await delAtt(id);
@@ -1122,6 +1217,7 @@ function render() {
   const routeKey = r.join('/'); if (routeKey !== S.lastRoute) { window.scrollTo(0, 0); S.lastRoute = routeKey; }
   if (r[0] === 'search') { const q = $('#q'); q && q.focus(); }
   if (r[0] === 'edit' && S.autoReadAtts === r[1]) { S.autoReadAtts = null; setTimeout(() => ACT['scan-atts'](), 50); }
+  if (r[0] === 'edit' && S.renewScan && S.renewScan.id === r[1]) { const fs = S.renewScan.files; S.renewScan = null; if (S.draft) S.draft.renewing = true; setTimeout(() => scanFiles(fs.map(fromFile)), 50); }
   if (r[0] === 'settings') { fillStorage(); fillScanner(); }
 }
 
@@ -1248,8 +1344,8 @@ function icsEvent(it) {
   const label = `${t.due || 'Expires'}: ${it.title}`;
   return ['BEGIN:VEVENT', `UID:${it.id}-${ds}@tijori.local`, `DTSTAMP:${stamp}`, `DTSTART;VALUE=DATE:${ds}`, `DTEND;VALUE=DATE:${nx}`,
     `SUMMARY:${icsEsc(label)}`, `DESCRIPTION:${icsEsc(`${t.n}${it.owner ? ' (' + it.owner + ')' : ''}: ${(t.due || 'expires').toLowerCase()} on ${fmtDate(d.date)}. Details are in your Tijori cabinet.`)}`,
-    'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsEsc(label)}`, 'TRIGGER:-P30D', 'END:VALARM',
-    'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsEsc(label)}`, 'TRIGGER:-P7D', 'END:VALARM', 'END:VEVENT'].join('\r\n');
+    ...[30, 7, 1].filter(n => d.days > n).slice(0, 2).concat(d.days <= 1 ? [0] : []).flatMap(n => ['BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsEsc(label)}`, n ? `TRIGGER:-P${n}D` : 'TRIGGER:PT9H', 'END:VALARM']),
+    'END:VEVENT'].join('\r\n');
 }
 const icsWrap = evs => ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Tijori//Private Cabinet//EN', 'CALSCALE:GREGORIAN', ...evs, 'END:VCALENDAR'].join('\r\n') + '\r\n';
 function drawerModal(title, d = {}) {
@@ -1423,6 +1519,8 @@ async function reviewScan(ex, newFiles, texts, { sources = 1, skipped = [] } = {
     (skipped.length ? `<p class="small">Skipped: ${esc(skipped.join(', '))}</p>` : '') +
     (rawText.trim() ? `<details class="rawtext"><summary>Show the text it read</summary><button type="button" class="btn sm" data-copy-raw>${icon('copy')} Copy all text</button><pre>${esc(rawText)}</pre></details>` : '');
   const onOpen = ov => ov.addEventListener('click', e => { if (e.target.closest('[data-copy-raw]')) copyText(rawText, 120); });
+  // scanning a renewed policy: its new date and number should replace the old ones (but never move the date back)
+  const renewTick = r => !!(S.draft && S.draft.renewing) && !(r.k === t.exp && r.cur && (expDate(t, r.v) || 0) <= (expDate(t, r.cur) || 0));
   const wantAttach = ov => { const c = ov.querySelector('#sg-att'); return !!(c && c.checked); };
   if (!rows.length) {
     const lines = texts.reduce((a, x) => a + x.res.lines.length, 0);
@@ -1432,7 +1530,7 @@ async function reviewScan(ex, newFiles, texts, { sources = 1, skipped = [] } = {
     return;
   }
   const inputFor = r => r.fd.t === 'date' ? `<input class="sg-v" type="date" data-k="${r.k}" value="${esc(r.v)}">` : `<input class="sg-v ${isMono(r.fd) ? 'mono' : ''}" type="text" data-k="${r.k}" value="${esc(r.v)}" autocomplete="off" spellcheck="false">`;
-  const html = `<p class="small">Found ${rows.length} detail${rows.length > 1 ? 's' : ''}${sources > 1 ? ` across ${sources} files` : ''}. Untick anything wrong, or correct it here.</p><div class="sg-list">${rows.map(r => `<label class="sg"><input type="checkbox" data-c="${r.k}" ${r.conf === 'low' || (r.cur && r.cur !== r.v) ? '' : 'checked'}><span class="sg-l">${esc(r.l)}${r.conf === 'low' ? '<em>please check</em>' : ''}</span>${inputFor(r)}${r.cur ? `<small>Will replace “${esc(r.cur)}”</small>` : ''}${r.hint ? `<small class="src">${esc(r.hint)}</small>` : ''}${sources > 1 && r.from ? `<small class="src">from ${esc(r.from)}</small>` : ''}</label>`).join('')}</div>${attach}`;
+  const html = `<p class="small">Found ${rows.length} detail${rows.length > 1 ? 's' : ''}${sources > 1 ? ` across ${sources} files` : ''}. Untick anything wrong, or correct it here.</p><div class="sg-list">${rows.map(r => `<label class="sg"><input type="checkbox" data-c="${r.k}" ${r.conf === 'low' || (r.cur && r.cur !== r.v && !renewTick(r)) ? '' : 'checked'}><span class="sg-l">${esc(r.l)}${r.conf === 'low' ? '<em>please check</em>' : ''}</span>${inputFor(r)}${r.cur ? `<small>Will replace “${esc(r.cur)}”</small>` : ''}${r.hint ? `<small class="src">${esc(r.hint)}</small>` : ''}${sources > 1 && r.from ? `<small class="src">from ${esc(r.from)}</small>` : ''}</label>`).join('')}</div>${attach}`;
   const collect = (ov, save) => ({ save,
     vals: [...ov.querySelectorAll('[data-c]')].filter(c => c.checked).map(c => ({ k: c.dataset.c, v: ov.querySelector(`.sg-v[data-k="${c.dataset.c}"]`).value.trim() })).filter(x => x.v),
     att: wantAttach(ov) });
@@ -1520,6 +1618,8 @@ const ACT = {
     const atts = S.draft.item.attachments.filter(scannable);
     if (atts.length) await scanFiles(atts.map(fromAtt));
   },
+  renew: el => renewItem(el.dataset.id),
+  'renew-undo': el => undoRenew(el.dataset.id),
   'read-atts': el => { S.autoReadAtts = el.dataset.id; location.hash = '#/edit/' + el.dataset.id; },
   'reload-app': async () => {
     if (S.draft && !await confirmM('Reload now?', 'Anything you haven’t saved in this form will be lost.', 'Reload', false)) return;
